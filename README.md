@@ -63,6 +63,8 @@ optional arguments:
 2. Modify the source code in your project:
 
 ```python
+from watchmen import Client
+
 client = Client(id="short description of this running", gpus=[1],
                 server_host="127.0.0.1", server_port=62333)
 client.wait()
@@ -84,6 +86,29 @@ And you can get a result like the demo below.
 Please be aware that the page is not going to change dynamically, so you can refresh the page manually to check the latest status.
 
 ![Demo](demo.png)
+
+4. Reminder when program is finished.
+
+`watchmen` also support email and other kinds of reminders for message informing.
+For example, you can send yourself an email when the program is finished.
+
+```python
+from watchmen.reminder import send_email
+
+... # your code here
+
+send_email(
+    host="smtp.163.com", # email host to login, like `smtp.163.com`
+    port=25, # email port to login, like `25`
+    user="***@163.com", # user email address for login, like `***@163.com`
+    password="***", # password or auth code for login
+    receiver="***@outlook.com", # receiver email address
+    html_message="<h1>Your program is finished!</h1>", # content, html format supported
+    subject="Proram Finished Notice" # email subject
+)
+```
+
+To get more reminders, please check `watchmen/reminder.py`.
 
 ## UPDATE
 - v0.2.2: fix html package data, add multi-card example
