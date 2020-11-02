@@ -7,7 +7,7 @@ import argparse
 import threading
 from collections import OrderedDict
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, render_template
 from apscheduler.schedulers.blocking import BlockingScheduler
 
 from watchmen.listener import is_single_gpu_totally_free, GPUInfo
@@ -153,6 +153,20 @@ def show_gpus():
     return jsonify(**{"status": status, "msg": msg})
 
 
+@app.route("/", methods=["GET"])
+def index():
+    gpu_info = show_gpus()
+    gpu_msg = gpu_info.json["msg"]
+    work_info = show_work()
+    work_msg = work_info.json
+    finished_info = show_finished()
+    finished_msg = finished_info.json
+    return render_template("index.html",
+                           gpu_msg=gpu_msg,
+                           work_msg=work_msg,
+                           finished_msg=finished_msg)
+
+
 def check_gpu_info():
     info = gpu_queue.get()
     info.new_query()
@@ -166,14 +180,17 @@ def check_work(queue_timeout):
     queue_num = 0
     for client_id, client in cc.work_queue.items():
         time_delta = datetime.datetime.now() - client.last_request_time
-        if time_delta.seconds > queue_timeout or client.status == ClientStatus.TIMEOUT:
-            client.status = ClientStatus.TIMEOUT
+        if time_delta.seconds > queue_timeout:
+            if client.status != ClientStatus.OK:
+                client.status = ClientStatus.TIMEOUT
             client.queue_num = -1 # invalid client
             marked_finished.append(client_id)
             continue
         client.queue_num = queue_num
-        if client.status != ClientStatus.OK:
-            ok = False
+        ok = False
+        if client.status == ClientStatus.OK:
+            reserved_gpus |= set(client.gpus)
+        else:
             gpu_info = gpu_queue.get()
             try:
                 ok = gpu_info.is_gpus_available(client.gpus)
@@ -183,10 +200,9 @@ def check_work(queue_timeout):
                 client.msg = str(err)
             finally:
                 gpu_queue.put(gpu_info)
-            if ok and len(set(client.gpus) & reserved_gpus) <= 0:
-                client.status = ClientStatus.OK
-                for gpu in client.gpus:
-                    reserved_gpus.add(gpu)
+        if ok and len(set(client.gpus) & reserved_gpus) <= 0:
+            client.status = ClientStatus.OK
+            reserved_gpus |= set(client.gpus)
         queue_num += 1
 
     for client_id in marked_finished:
@@ -226,7 +242,7 @@ def regular_check(request_interval, queue_timeout, status_queue_keep_time):
 
 
 def api_server(host, port):
-    app.run(host=host, port=port)
+    app.run(host="0.0.0.0", port=port)
 
 
 if __name__ == "__main__":
