@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Watchmen</title>
+</head>
+
+<body>
+  <h1>Watchmen GPU Scheduler</h1>
+  <div>
+    <h2>GPU Status</h2>
+    {% if 'hostname' in gpu_msg %}
+    <table border="2">
+      <p>{{ gpu_msg.hostname }} : {{ gpu_msg.query_time }}</p>
+      <thead>
+        <tr>
+          <th>Index</th>
+          <th>Name</th>
+          <th>Temp</th>
+          <th>Util</th>
+          <th>Memory</th>
+          <th>#Process</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for gpu in gpu_msg.gpus %}
+        <tr>
+          <td>{{ gpu.index }}</td>
+          <td>{{ gpu.name }}</td>
+          <td>{{ gpu['temperature.gpu'] }}</td>
+          <td>{{ gpu['utilization.gpu'] }}</td>
+          <td>{{ gpu['memory.used'] }} / {{ gpu['memory.total'] }}</td>
+          <td>{{ gpu.processes|length }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p>{{ gpu_msg }}</p>
+    {% endif %}
+  </div>
+  <div>
+    <h2>Working Queue Status</h2>
+    {% if work_msg.status == "ok" %}
+    <table border="2">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>GPUS</th>
+          <th>Queue Num</th>
+          <th>Last Request Time</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for client in work_msg.msg %}
+        <tr>
+          <td>{{ client.id }}</td>
+          <td>{{ client.gpus }}</td>
+          <td>{{ client.queue_num }}</td>
+          <td>{{ client.last_request_time }}</td>
+          <td>
+            {% if client.status == "ok" %}
+            <p style="color:green">OK</p>
+            {% elif client.status == "waiting" %}
+            <p>Waiting</p>
+            {% elif client.status == "timeout" %}
+            <p style="color:red">Timeout</p>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p>{{ work_msg }}</p>
+    {% endif %}
+  </div>
+  <div>
+    <h2>Finished Queue Status</h2>
+    {% if finished_msg.status == "ok" %}
+    <table border="2">
+      <thead>
+        <tr>
+          <th>ID</th>
+          <th>GPUS</th>
+          <th>Queue Num</th>
+          <th>Last Request Time</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for client in finished_msg.msg %}
+        <tr>
+          <td>{{ client.id }}</td>
+          <td>{{ client.gpus }}</td>
+          <td>{{ client.queue_num }}</td>
+          <td>{{ client.last_request_time }}</td>
+          <td>
+            {% if client.status == "ok" %}
+            <p style="color:green">OK</p>
+            {% elif client.status == "waiting" %}
+            <p>Waiting</p>
+            {% elif client.status == "timeout" %}
+            <p style="color:red">Timeout</p>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p>{{ finished_msg }}</p>
+    {% endif %}
+  </div>
+</body>
+
+</html>
