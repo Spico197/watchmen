@@ -114,6 +114,7 @@ To get more reminders, please check `watchmen/reminder.py`.
 - v0.2.2: fix html package data, add multi-card example
 
 ## TODO
+- [ ] add schedule feature, so clients only have to request for a number and range of gpus, and the server will assign the gpu num to clients
 - [x] add reminders
 - [x] add webui html support
 - [x] add examples
