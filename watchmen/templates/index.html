@@ -48,7 +48,9 @@
       <thead>
         <tr>
           <th>ID</th>
-          <th>GPUS</th>
+          <th>Mode</th>
+          <th>GPU Scope</th>
+          <th>Request GPU Num</th>
           <th>Queue Num</th>
           <th>Last Request Time</th>
           <th>Status</th>
@@ -58,7 +60,9 @@
         {% for client in work_msg.msg %}
         <tr>
           <td>{{ client.id }}</td>
+          <td>{{ client.mode }}</td>
           <td>{{ client.gpus }}</td>
+          <td>{{ client.req_gpu_num }}</td>
           <td>{{ client.queue_num }}</td>
           <td>{{ client.last_request_time }}</td>
           <td>
@@ -85,7 +89,10 @@
       <thead>
         <tr>
           <th>ID</th>
-          <th>GPUS</th>
+          <th>Mode</th>
+          <th>Request GPU Num</th>
+          <th>GPU Scope</th>
+          <th>Available GPUs</th>
           <th>Queue Num</th>
           <th>Last Request Time</th>
           <th>Status</th>
@@ -95,7 +102,10 @@
         {% for client in finished_msg.msg %}
         <tr>
           <td>{{ client.id }}</td>
+          <td>{{ client.mode }}</td>
+          <td>{{ client.req_gpu_num }}</td>
           <td>{{ client.gpus }}</td>
+          <td>{{ client.available_gpus }}</td>
           <td>{{ client.queue_num }}</td>
           <td>{{ client.last_request_time }}</td>
           <td>
