@@ -11,7 +11,7 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
 
-from watchmen import Client
+from watchmen import Client, ClientMode
 
 
 class Net(nn.Module):
@@ -101,7 +101,10 @@ def main():
                         help="identifier")
     parser.add_argument("--cuda", type=str,
                         help="cuda device")
-    parser.add_argument("--wait", action="store_true",
+    parser.add_argument("--req_gpu_num", type=int, default=0,
+                        help="request gpu number if is `schedule` mode")
+    parser.add_argument("--wait", type=str, default="queue",
+                        choices=["queue", "schedule", "none"],
                         help="wait for watchmen signal")
     args = parser.parse_args()
     torch.manual_seed(args.seed)
@@ -110,10 +113,16 @@ def main():
     device = torch.device(f"cuda:{cudas[0]}")
 
     """WATCHMEN"""
-    if args.wait:
+    if args.wait == "queue":
+        # queue wait
         client = Client(id=f"mnist multi card {args.id} cuda={args.cuda}", gpus=cudas,
                         server_host="127.0.0.1", server_port=62333)
-        client.wait()
+    elif args.wait == "schedule":
+        # scheduling wait
+        client = Client(id=f"mnist multi card {args.id} cuda={args.cuda}",
+                        gpus=cudas, mode=ClientMode.SCHEDULE, req_gpu_num=args.req_gpu_num,
+                        server_host="127.0.0.1", server_port=62334)
+    device_ids = client.wait()
     """END OF WATCHMEN"""
 
     train_kwargs = {'batch_size': args.batch_size}
@@ -138,7 +147,7 @@ def main():
     test_loader = torch.utils.data.DataLoader(dataset2, **test_kwargs)
 
     model = Net()
-    model = nn.DataParallel(model, device_ids=cudas)
+    model = nn.DataParallel(model, device_ids=device_ids)
     model.to(device)
     optimizer = optim.Adadelta(model.parameters(), lr=args.lr)
 

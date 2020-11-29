@@ -11,7 +11,7 @@ A simple and easy-to-use toolkit for GPU scheduling.
 
 ## Installation
 
-1. Install dependencies.
+1. Install dependencies. 
 ```bash
 $ pip install -r requirements.txt
 ```
@@ -75,7 +75,10 @@ You can check examples in `example/` for further reading.
 
 ```bash
 $ cd example && python single_card_mnist.py --id="single" --cuda=0 --wait
+# queue mode
 $ cd example && python multi_card_mnist.py --id="multi" --cuda=2,3 --wait
+# schedule mode
+$ cd example && python multi_card_mnist.py --id='multi card scheduling wait' --cuda=1,0,3 --req_gpu_num=2 --wait=schedule
 ```
 
 3. Check the queue in browser.
@@ -85,7 +88,10 @@ Open the following link to your browser: `http://<server ip address>:<server por
 And you can get a result like the demo below.
 Please be aware that the page is not going to change dynamically, so you can refresh the page manually to check the latest status.
 
+New Demo (scheduling mode supported)
 ![Demo](demo.png)
+Old Demo (queue mode supported)
+![Old Demo](demo_old.png)
 
 4. Reminder when program is finished.
 
@@ -111,10 +117,12 @@ send_email(
 To get more reminders, please check `watchmen/reminder.py`.
 
 ## UPDATE
+- v0.3.0: support gpu scheduling, fix blank input output, fix `check_gpus_existence`
 - v0.2.2: fix html package data, add multi-card example
 
 ## TODO
-- [ ] add schedule feature, so clients only have to request for a number and range of gpus, and the server will assign the gpu num to clients
+- [ ] gpu using stats for each user and process
+- [x] add schedule feature, so clients only have to request for a number and range of gpus, and the server will assign the gpu num to clients
 - [x] add reminders
 - [x] add webui html support
 - [x] add examples

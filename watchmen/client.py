@@ -8,7 +8,7 @@ from collections import OrderedDict
 import requests
 from pydantic import BaseModel
 
-from watchmen.listener import gpus_existence_check
+from watchmen.listener import check_gpus_existence, check_req_gpu_num
 
 
 class ClientStatus(str, Enum):
@@ -17,13 +17,25 @@ class ClientStatus(str, Enum):
     OK = "ok"
 
 
+class ClientMode(str, Enum):
+    QUEUE = 'queue'
+    SCHEDULE = 'schedule'
+
+    @classmethod
+    def has_value(cls, value):
+        return value in set(cls._member_map_.values())
+
+
 class ClientModel(BaseModel):
     id: str # identifier in string format
+    mode: Optional[ClientMode] = ClientMode.QUEUE # `queue` (wait for specific gpus) or `schedule` (schedule by the server automatically)
     last_request_time: Optional[datetime.datetime] = None   # datetime.datetime
     status: Optional[ClientStatus] = ClientStatus.WAITING   # `waiting`, `timeout`, `ok`
     queue_num: Optional[int] = 0    # queue number
-    gpus: Optional[List[int]] = []    # gpus for requesting to run on
+    gpus: Optional[List[int]] = []    # `queue` mode: gpus for requesting to run on; `schedule` mode: available gpu scope.
     msg: Optional[str] = "" # error or status message
+    req_gpu_num : Optional[int] = 0 # `schedule` mode: how many gpus are requested
+    available_gpus: Optional[List[int]] = []
 
 
 class ClientCollection(object):
@@ -57,20 +69,39 @@ class ClientCollection(object):
 class Client(object):
     def __init__(self, id: str, gpus: List[int],
                  server_host: str, server_port: int,
+                 mode: Optional[ClientMode] = ClientMode.QUEUE,
+                 req_gpu_num: Optional[int] = 0,
                  timeout: Optional[int] = 10):
         self.base_url = f"http://{server_host}:{server_port}"
         self.id = f"{getpass.getuser()}@{id}"
-        self._validate_gpus(gpus)
-        self.gpus = gpus
+        if self._validate_gpus(gpus):
+            self.gpus = gpus
+        else:
+            raise ValueError("Check the GPU existence")
+        if not self._validate_mode(mode):
+            raise ValueError(f"Check the mode: {mode}")
+        self.mode = mode
+        if self.mode == ClientMode.SCHEDULE:
+            if not self._validate_req_gpu_num(req_gpu_num):
+                raise ValueError(f"Check the `req_gpu_num`: {req_gpu_num}")
+        self.req_gpu_num = req_gpu_num
         self.timeout = timeout
 
     def _validate_gpus(self, gpus: List[int]):
-        return gpus_existence_check(gpus)
+        return check_gpus_existence(gpus)
+    
+    def _validate_mode(self, mode: ClientMode):
+        return ClientMode.has_value(mode)
+    
+    def _validate_req_gpu_num(self, req_gpu_num: int):
+        return check_req_gpu_num(req_gpu_num)
 
     def register(self):
         data = {
             "id": self.id,
-            "gpus": self.gpus
+            "gpus": self.gpus,
+            "mode": self.mode,
+            "req_gpu_num": self.req_gpu_num
         }
         result = requests.post(self.base_url + "/client/register",
                                json=data, timeout=self.timeout).json()
@@ -87,9 +118,9 @@ class Client(object):
             raise RuntimeError(f"err registering: {result['msg']}")
         else:
             if result["msg"] == ClientStatus.WAITING:
-                return False
+                return False, result["available_gpus"]
             elif result["msg"] == ClientStatus.OK:
-                return True
+                return True, result["available_gpus"]
             elif result["msg"] == ClientStatus.TIMEOUT:
                 raise RuntimeError(f"status changed to TIMEOUT")
 
@@ -97,5 +128,6 @@ class Client(object):
         self.register()
         flag = False
         while not flag:
-            flag = self.ping()
+            flag, available_gpus = self.ping()
             time.sleep(10)
+        return available_gpus

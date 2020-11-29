@@ -10,8 +10,18 @@ from collections import OrderedDict
 from flask import Flask, jsonify, request, render_template
 from apscheduler.schedulers.blocking import BlockingScheduler
 
-from watchmen.listener import is_single_gpu_totally_free, GPUInfo
-from watchmen.client import ClientStatus, ClientModel, ClientCollection
+from watchmen.listener import (
+    is_single_gpu_totally_free,
+    check_gpus_existence,
+    check_req_gpu_num,
+    GPUInfo
+)
+from watchmen.client import (
+    ClientStatus,
+    ClientMode,
+    ClientModel,
+    ClientCollection
+)
 
 
 logging.getLogger('apscheduler').setLevel(logging.ERROR)
@@ -63,18 +73,22 @@ def get_gpus_status(gpu_ids: str):
 def client_ping():
     client_info = ClientModel(**request.json)
     status = ""
+    available_gpus = []
     msg = ""
     client_id = client_info.id
     cc = client_queue.get()
     if client_id in cc:
         cc[client_id].last_request_time = datetime.datetime.now()
         status = "ok"
+        available_gpus = cc[client_id].available_gpus
         msg = cc[client_id].status
     else:
         status = "err"
         msg = "cannot ping before register"
     client_queue.put(cc)
-    return jsonify(**{"status": status, "msg": msg})
+    return jsonify(**{"status": status, 
+                      "available_gpus": available_gpus,
+                      "msg": msg})
 
 
 @app.route("/client/register", methods=["POST"])
@@ -85,15 +99,27 @@ def client_register():
     if len(client_info.gpus) <= 0:
         status = "err"
         msg = "gpus must not be empty!"
+    elif not ClientMode.has_value(client_info.mode):
+        status = "err"
+        msg = f"mode {client_info.mode} is not supported"
+    elif not check_gpus_existence(client_info.gpus):
+        status = "err"
+        msg = f"check the gpus existence"
+    elif client_info.mode == ClientMode.SCHEDULE and \
+            not check_req_gpu_num(client_info.req_gpu_num):
+        status = "err"
+        msg = "`req_gpu_num` is not valid"
     else:
         cc = client_queue.get()
         if client_info.id not in cc:
             client = ClientModel(
                 id=client_info.id,
+                mode=client_info.mode,
                 status=ClientStatus.WAITING,
                 last_request_time=datetime.datetime.now(),
                 queue_num=len(cc.work_queue),
                 gpus=client_info.gpus,
+                req_gpu_num=client_info.req_gpu_num
             )
             cc.work_queue[client.id] = client
             status = "ok"
@@ -193,15 +219,25 @@ def check_work(queue_timeout):
         else:
             gpu_info = gpu_queue.get()
             try:
-                ok = gpu_info.is_gpus_available(client.gpus)
+                if client.mode == 'queue':
+                    ok = gpu_info.is_gpus_available(client.gpus)
+                    available_gpus = client.gpus
+                elif client.mode == 'schedule':
+                    ok, available_gpus = gpu_info.is_req_gpu_num_satisfied(
+                            client.gpus, client.req_gpu_num)
+                else:
+                    raise RuntimeError(f"Not supported mode: {client.mode}")
             except IndexError as err:
                 client.msg = str(err)
             except ValueError as err:
+                client.msg = str(err)
+            except RuntimeError as err:
                 client.msg = str(err)
             finally:
                 gpu_queue.put(gpu_info)
         if ok and len(set(client.gpus) & reserved_gpus) <= 0:
             client.status = ClientStatus.OK
+            client.available_gpus = available_gpus
             reserved_gpus |= set(client.gpus)
         queue_num += 1
 
@@ -300,5 +336,7 @@ if __name__ == "__main__":
             gpu_info = gpu_queue.get()
             gpu_info.gs.print_formatted()
             gpu_queue.put(gpu_info)
+        elif len(in_str.strip()) == 0:
+            continue
         else:
             print("Not understand orz")
