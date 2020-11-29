@@ -89,8 +89,11 @@ And you can get a result like the demo below.
 Please be aware that the page is not going to change dynamically, so you can refresh the page manually to check the latest status.
 
 New Demo (scheduling mode supported)
+
 ![Demo](demo.png)
+
 Old Demo (queue mode supported)
+
 ![Old Demo](demo_old.png)
 
 4. Reminder when program is finished.
