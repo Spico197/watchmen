@@ -124,6 +124,12 @@ To get more reminders, please check `watchmen/reminder.py`.
 - v0.2.2: fix html package data, add multi-card example
 
 ## TODO
+- [ ] change `Client` into `WatchClient`, in case of any ambiguity
+- [ ] `ClientCollection/__contains__` function should not include `finished_queue`, to help the `id` releases
+- [ ] import user authentication modules to help the working queue delete operations
+- [ ] read programs' pids to help reading program working status and kill tasks remotely
+- [ ] test and support distributed model parallel configurations (with `python -m torch.distributed.launch`)
+- [ ] prettify the web page and divide functions into different tabs
 - [ ] gpu using stats for each user and process
 - [x] add schedule feature, so clients only have to request for a number and range of gpus, and the server will assign the gpu num to clients
 - [x] add reminders
