@@ -63,10 +63,10 @@ class ClientCollection(object):
             raise IndexError(f"index: {index} does not exist")
 
     def __contains__(self, index: str):
-        return index in self.work_queue or index in self.finished_queue
+        return index in self.work_queue
 
 
-class Client(object):
+class WatchClient(object):
     def __init__(self, id: str, gpus: List[int],
                  server_host: str, server_port: int,
                  mode: Optional[ClientMode] = ClientMode.QUEUE,

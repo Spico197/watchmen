@@ -63,10 +63,10 @@ optional arguments:
 2. Modify the source code in your project:
 
 ```python
-from watchmen import Client
+from watchmen import WatchClient
 
-client = Client(id="short description of this running", gpus=[1],
-                server_host="127.0.0.1", server_port=62333)
+client = WatchClient(id="short description of this running", gpus=[1],
+                     server_host="127.0.0.1", server_port=62333)
 client.wait()
 ```
 
@@ -124,13 +124,14 @@ To get more reminders, please check `watchmen/reminder.py`.
 - v0.2.2: fix html package data, add multi-card example
 
 ## TODO
-- [ ] change `Client` into `WatchClient`, in case of any ambiguity
-- [ ] `ClientCollection/__contains__` function should not include `finished_queue`, to help the `id` releases
 - [ ] import user authentication modules to help the working queue delete operations
 - [ ] read programs' pids to help reading program working status and kill tasks remotely
 - [ ] test and support distributed model parallel configurations (with `python -m torch.distributed.launch`)
 - [ ] prettify the web page and divide functions into different tabs
 - [ ] gpu using stats for each user and process
+- [x] change `Client` into `WatchClient`, in case of any ambiguity
+- [x] `ClientCollection/__contains__` function should not include `finished_queue`, to help the `id` releases
+- [x] subject bug in `reminder/send_email()`
 - [x] add schedule feature, so clients only have to request for a number and range of gpus, and the server will assign the gpu num to clients
 - [x] add reminders
 - [x] add webui html support
