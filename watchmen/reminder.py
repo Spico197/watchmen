@@ -28,7 +28,7 @@ def send_email(
     msg = MIMEMultipart()       # create a message
     msg['From'] = user
     msg['To'] = receiver
-    msg['Subject']="Notice"
+    msg['Subject'] = subject
     msg.attach(MIMEText(html_message, 'html'))
     s.send_message(msg)
     del msg

@@ -11,7 +11,7 @@ import torch.optim as optim
 from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
 
-from watchmen import Client
+from watchmen import WatchClient
 
 
 class Net(nn.Module):
@@ -110,8 +110,8 @@ def main():
 
     """WATCHMEN"""
     if args.wait:
-        client = Client(id=f"mnist single card {args.id} cuda={args.cuda}", gpus=[args.cuda],
-                        server_host="127.0.0.1", server_port=62333)
+        client = WatchClient(id=f"mnist single card {args.id} cuda={args.cuda}", gpus=[args.cuda],
+                             server_host="127.0.0.1", server_port=62333)
         client.wait()
     """END OF WATCHMEN"""
 
