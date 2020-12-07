@@ -120,6 +120,8 @@ send_email(
 To get more reminders, please check `watchmen/reminder.py`.
 
 ## UPDATE
+- v0.3.2: fix `WatchClient` bug
+- v0.3.1: change `Client` into `WatchClient`, fix `ClientCollection` and `send_email` bug
 - v0.3.0: support gpu scheduling, fix blank input output, fix `check_gpus_existence`
 - v0.2.2: fix html package data, add multi-card example
 

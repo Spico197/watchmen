@@ -1,2 +1,2 @@
-from .client import Client
+from .client import WatchClient
 from .client import ClientMode
