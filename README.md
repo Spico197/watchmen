@@ -120,6 +120,7 @@ send_email(
 To get more reminders, please check `watchmen/reminder.py`.
 
 ## UPDATE
+- v0.3.3: fix `check_finished` bug in server end, quit the main thread if the sub-thread is quit, and remove the backend cmd in the main thread
 - v0.3.2: fix `WatchClient` bug
 - v0.3.1: change `Client` into `WatchClient`, fix `ClientCollection` and `send_email` bug
 - v0.3.0: support gpu scheduling, fix blank input output, fix `check_gpus_existence`
@@ -131,6 +132,7 @@ To get more reminders, please check `watchmen/reminder.py`.
 - [ ] test and support distributed model parallel configurations (with `python -m torch.distributed.launch`)
 - [ ] prettify the web page and divide functions into different tabs
 - [ ] gpu using stats for each user and process
+- [x] quit the main thread if the sub-thread is quit
 - [x] change `Client` into `WatchClient`, in case of any ambiguity
 - [x] `ClientCollection/__contains__` function should not include `finished_queue`, to help the `id` releases
 - [x] subject bug in `reminder/send_email()`
