@@ -1,4 +1,7 @@
+import os
+import sys
 import json
+import time
 import queue
 import logging
 import readline
@@ -24,7 +27,16 @@ from watchmen.client import (
 )
 
 
-logging.getLogger('apscheduler').setLevel(logging.ERROR)
+apscheduler_logger = logging.getLogger('apscheduler')
+apscheduler_logger.setLevel(logging.ERROR)
+logger = logging.getLogger("common")
+logger.setLevel(logging.INFO)
+fmt = "[%(asctime)-15s]-%(levelname)s-%(filename)s-%(lineno)d-%(process)d: %(message)s"
+datefmt = "%a %d %b %Y %H:%M:%S"
+formatter = logging.Formatter(fmt, datefmt)
+stream_handler = logging.StreamHandler(sys.stdout)
+stream_handler.setFormatter(formatter)
+logger.addHandler(stream_handler)
 
 app = Flask("watchmen.server")
 gpu_queue = queue.Queue()
@@ -251,7 +263,8 @@ def check_finished(status_queue_keep_time):
     marked_delete_ids = []
     for client_id, client in cc.finished_queue.items():
         time_delta = datetime.datetime.now() - client.last_request_time
-        if time_delta.hours >= status_queue_keep_time:
+        # there is no timedelta.hours attribute and 1 hour = 3600 seconds
+        if time_delta.seconds/3600 >= status_queue_keep_time:
             marked_delete_ids.append(client_id)
     for client_id in marked_delete_ids:
         cc.finished_queue.pop(client_id)
@@ -259,7 +272,7 @@ def check_finished(status_queue_keep_time):
 
 
 def regular_check(request_interval, queue_timeout, status_queue_keep_time):
-    scheduler = BlockingScheduler()
+    scheduler = BlockingScheduler(logger=apscheduler_logger)
     scheduler.add_job(check_gpu_info,
                       trigger='interval',
                       seconds=request_interval,
@@ -278,12 +291,12 @@ def regular_check(request_interval, queue_timeout, status_queue_keep_time):
 
 
 def api_server(host, port):
-    app.run(host="0.0.0.0", port=port)
+    app.run(host=host, port=port)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--host", type=str, default="127.0.0.1",
+    parser.add_argument("--host", type=str, default="0.0.0.0",
                         help="host address for api server")
     parser.add_argument("--port", type=str, default=62333,
                         help="port for api server")
@@ -294,7 +307,13 @@ if __name__ == "__main__":
     parser.add_argument("--status_queue_keep_time", type=int, default=48,
                         help="hours for keeping the client status")
     args = parser.parse_args()
+    
+    logger.info(f"Running at: {args.host}:{args.port}")
+    logger.info(f"Current pid: {os.getpid()} > watchmen_server.pid")
+    with open("watchmen_server.pid", "wt", encoding="utf-8") as fout:
+        fout.write(f"{os.getpid()}")
 
+    # daemon threads will end automaticly if the main thread ends
     # thread 1: check gpu and client info regularly
     check_worker = threading.Thread(name="check",
                                     target=regular_check,
@@ -303,40 +322,29 @@ if __name__ == "__main__":
                                           args.status_queue_keep_time),
                                     daemon=True)
 
-    # thread 2: fastapi backend
+    # thread 2: main server api backend
     api_server_worker = threading.Thread(name="api",
                                          target=api_server,
                                          args=(args.host, args.port),
                                          daemon=True)
 
     check_worker.start()
+    logger.info("check worker started")
     api_server_worker.start()
+    logger.info("api server started")
 
-    in_str = ''
-    while in_str != 'exit':
-        in_str = input('`help` >')
-        if in_str == 'help':
-            print("show work: show working queue")
-            print("show finished: show finished queue")
-            print("show gpus: show gpu status")
-            print("exit: exit server")
-        elif in_str == "exit":
+    while True:
+        try:
+            if not check_worker.is_alive():
+                logger.error("check worker is not alive, server quit")
+                raise RuntimeError("check worker is not alive, server quit")
+            if not api_server_worker.is_alive():
+                logger.error("api server worker is not alive, server quit")
+                raise RuntimeError("api server worker is not alive, server quit")
+        except RuntimeError as err:
+            logger.error("runtime error, kill the server")
             break
-        elif in_str == "show work":
-            cc = client_queue.get()
-            for cid in cc.work_queue:
-                print(cc[cid])
-            client_queue.put(cc)
-        elif in_str == "show finished":
-            cc = client_queue.get()
-            for cid in cc.finished_queue:
-                print(cc[cid])
-            client_queue.put(cc)
-        elif in_str == "show gpus":
-            gpu_info = gpu_queue.get()
-            gpu_info.gs.print_formatted()
-            gpu_queue.put(gpu_info)
-        elif len(in_str.strip()) == 0:
-            continue
-        else:
-            print("Not understand orz")
+        except KeyboardInterrupt:
+            logger.error("keyboard interrupted, kill the server")
+            break
+    logger.error("bye")
