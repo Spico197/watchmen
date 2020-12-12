@@ -1,7 +1,6 @@
 import os
 import sys
 import json
-import time
 import queue
 import logging
 import readline
