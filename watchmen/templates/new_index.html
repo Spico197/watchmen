@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Watchmen</title>
+</head>
+
+<body>
+  <h1>Watchmen GPU Scheduler</h1>
+  <ul>
+    <li>GPU Status</li>
+    <li>Working Queue</li>
+    <li>Finished Queue</li>
+  </ul>
+  <pre id="result"></pre>
+  <script type="text/javascript">
+    var port = {{ port }}
+    const result = document.getElementById("result")
+
+    window.addEventListener('load', async () => {
+      console.log(port)
+      await updateFrame()
+    })
+
+    async function updateFrame() {
+      await fetch("/api")
+        .then(async (response) => {
+          if (!response.ok) {
+            result.innerText = 'not ok !'
+          } else {
+            result.innerText = JSON.stringify(await response.json(), null, 2)
+          }
+        })
+        .catch(err => console.error(err))
+    }
+
+    setInterval(updateFrame, 10000)
+  </script>
+</body>
+
+</html>

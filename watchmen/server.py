@@ -43,6 +43,8 @@ gpu_queue.put(GPUInfo())
 client_queue = queue.Queue()
 client_queue.put(ClientCollection())
 
+APP_PORT = None
+
 
 @app.route("/gpu/<int:gpu_id>")
 def get_single_gpu_status(gpu_id: int):
@@ -97,7 +99,7 @@ def client_ping():
         status = "err"
         msg = "cannot ping before register"
     client_queue.put(cc)
-    return jsonify(**{"status": status, 
+    return jsonify(**{"status": status,
                       "available_gpus": available_gpus,
                       "msg": msg})
 
@@ -115,7 +117,7 @@ def client_register():
         msg = f"mode {client_info.mode} is not supported"
     elif not check_gpus_existence(client_info.gpus):
         status = "err"
-        msg = f"check the gpus existence"
+        msg = "check the gpus existence"
     elif client_info.mode == ClientMode.SCHEDULE and \
             not check_req_gpu_num(client_info.req_gpu_num):
         status = "err"
@@ -127,6 +129,7 @@ def client_register():
                 id=client_info.id,
                 mode=client_info.mode,
                 status=ClientStatus.WAITING,
+                register_time=datetime.datetime.now(),
                 last_request_time=datetime.datetime.now(),
                 queue_num=len(cc.work_queue),
                 gpus=client_info.gpus,
@@ -190,18 +193,36 @@ def show_gpus():
     return jsonify(**{"status": status, "msg": msg})
 
 
-@app.route("/", methods=["GET"])
-def index():
+@app.route("/api", methods=["GET"])
+def api():
     gpu_info = show_gpus()
     gpu_msg = gpu_info.json["msg"]
     work_info = show_work()
-    work_msg = work_info.json
+    work_msg = work_info.json["msg"]
     finished_info = show_finished()
-    finished_msg = finished_info.json
-    return render_template("index.html",
-                           gpu_msg=gpu_msg,
-                           work_msg=work_msg,
-                           finished_msg=finished_msg)
+    finished_msg = finished_info.json["msg"]
+    response = jsonify({
+        "gpu": gpu_msg,
+        "work_queue": work_msg,
+        "finished_queue": finished_msg
+    })
+    return response
+
+
+@app.route("/", methods=["GET"])
+def index():
+    global APP_PORT
+    # gpu_info = show_gpus()
+    # gpu_msg = gpu_info.json["msg"]
+    # work_info = show_work()
+    # work_msg = work_info.json
+    # finished_info = show_finished()
+    # finished_msg = finished_info.json
+    # return render_template("index.html",
+    #                        gpu_msg=gpu_msg,
+    #                        work_msg=work_msg,
+    #                        finished_msg=finished_msg)
+    return render_template("new_index.html", port=APP_PORT)
 
 
 def check_gpu_info():
@@ -213,18 +234,19 @@ def check_gpu_info():
 def check_work(queue_timeout):
     cc = client_queue.get()
     marked_finished = []
-    reserved_gpus = set() # whether there can be multiple `ok` in one scan
+    reserved_gpus = set()  # whether there can be multiple `ok` in one scan
     queue_num = 0
     for client_id, client in cc.work_queue.items():
         time_delta = datetime.datetime.now() - client.last_request_time
         if time_delta.seconds > queue_timeout:
             if client.status != ClientStatus.OK:
                 client.status = ClientStatus.TIMEOUT
-            client.queue_num = -1 # invalid client
+            client.queue_num = -1  # invalid client
             marked_finished.append(client_id)
             continue
         client.queue_num = queue_num
         ok = False
+        available_gpus = []
         if client.status == ClientStatus.OK:
             reserved_gpus |= set(client.gpus)
         else:
@@ -235,7 +257,7 @@ def check_work(queue_timeout):
                     available_gpus = client.gpus
                 elif client.mode == 'schedule':
                     ok, available_gpus = gpu_info.is_req_gpu_num_satisfied(
-                            client.gpus, client.req_gpu_num)
+                        client.gpus, client.req_gpu_num)
                 else:
                     raise RuntimeError(f"Not supported mode: {client.mode}")
             except IndexError as err:
@@ -261,9 +283,8 @@ def check_finished(status_queue_keep_time):
     cc = client_queue.get()
     marked_delete_ids = []
     for client_id, client in cc.finished_queue.items():
-        time_delta = datetime.datetime.now() - client.last_request_time
-        # there is no timedelta.hours attribute and 1 hour = 3600 seconds
-        if time_delta.seconds/3600 >= status_queue_keep_time:
+        delta = datetime.datetime.now() - client.last_request_time
+        if (delta.days * 24 + delta.seconds / 3600) >= status_queue_keep_time:
             marked_delete_ids.append(client_id)
     for client_id in marked_delete_ids:
         cc.finished_queue.pop(client_id)
@@ -278,18 +299,21 @@ def regular_check(request_interval, queue_timeout, status_queue_keep_time):
                       next_run_time=datetime.datetime.now())
     scheduler.add_job(check_work,
                       trigger='interval',
-                      seconds=request_interval*5,
+                      seconds=request_interval * 5,
                       args=(queue_timeout,),
                       next_run_time=datetime.datetime.now())
-    scheduler.add_job(check_finished,
-                      trigger='interval',
-                      hours=status_queue_keep_time,
-                      args=(status_queue_keep_time,),
-                      next_run_time=datetime.datetime.now())
+    if status_queue_keep_time != -1:
+        scheduler.add_job(check_finished,
+                        trigger='interval',
+                        hours=status_queue_keep_time,
+                        args=(status_queue_keep_time,),
+                        next_run_time=datetime.datetime.now())
     scheduler.start()
 
 
 def api_server(host, port):
+    global APP_PORT
+    APP_PORT = port
     app.run(host=host, port=port)
 
 
@@ -304,9 +328,10 @@ if __name__ == "__main__":
     parser.add_argument("--request_interval", type=int, default=1,
                         help="interval for gpu status requesting (seconds)")
     parser.add_argument("--status_queue_keep_time", type=int, default=48,
-                        help="hours for keeping the client status")
+                        help=("hours for keeping the client status. "
+                              "set `-1` to keep all clients' status"))
     args = parser.parse_args()
-    
+
     logger.info(f"Running at: {args.host}:{args.port}")
     logger.info(f"Current pid: {os.getpid()} > watchmen_server.pid")
     with open("watchmen_server.pid", "wt", encoding="utf-8") as fout:
@@ -340,7 +365,7 @@ if __name__ == "__main__":
             if not api_server_worker.is_alive():
                 logger.error("api server worker is not alive, server quit")
                 raise RuntimeError("api server worker is not alive, server quit")
-        except RuntimeError as err:
+        except RuntimeError:
             logger.error("runtime error, kill the server")
             break
         except KeyboardInterrupt:
