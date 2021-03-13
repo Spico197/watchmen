@@ -122,7 +122,9 @@ def main():
         client = WatchClient(id=f"mnist single card {args.id} cuda={args.cuda}",
                              gpus=eval(f"[{args.cuda}]"),
                              req_gpu_num=1, mode=waiting_mode,
-                             server_host="127.0.0.1", server_port=23334)
+                             server_host="127.0.0.1", server_port=62333)
+        # client.register()
+        available_gpus = []
         available_gpus = client.wait()
         if len(available_gpus) <= 0:
             sys.exit(1)

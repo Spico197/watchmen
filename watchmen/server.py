@@ -10,6 +10,8 @@ import threading
 from collections import OrderedDict
 
 from flask import Flask, jsonify, request, render_template
+from flask.helpers import make_response
+from flask.json import JSONEncoder
 from apscheduler.schedulers.blocking import BlockingScheduler
 
 from watchmen.listener import (
@@ -46,6 +48,20 @@ client_queue.put(ClientCollection())
 APP_PORT = None
 
 
+class CustomJSONEncoder(JSONEncoder):
+    def default(self, obj):
+        try:
+            if isinstance(obj, datetime.datetime):
+                return obj.strftime("%Y-%m-%d %H:%M:%S")
+            iterable = iter(obj)
+        except TypeError:
+            pass
+        else:
+            return list(iterable)
+        return JSONEncoder.default(self, obj)
+app.json_encoder = CustomJSONEncoder
+
+
 @app.route("/gpu/<int:gpu_id>")
 def get_single_gpu_status(gpu_id: int):
     status = ""
@@ -56,7 +72,7 @@ def get_single_gpu_status(gpu_id: int):
     except ValueError as err:
         msg = str(err)
         status = "err"
-    return jsonify(**{"status": status, "msg": msg})
+    return jsonify({"status": status, "msg": msg})
 
 
 @app.route("/gpus/<gpu_ids>")
@@ -79,7 +95,7 @@ def get_gpus_status(gpu_ids: str):
     except ValueError as err:
         msg = str(err)
         status = "err"
-    return jsonify(**{"status": status, "msg": msg, "detail": detail})
+    return jsonify({"status": status, "msg": msg, "detail": detail})
 
 
 @app.route("/client/ping", methods=["POST"])
@@ -99,9 +115,9 @@ def client_ping():
         status = "err"
         msg = "cannot ping before register"
     client_queue.put(cc)
-    return jsonify(**{"status": status,
-                      "available_gpus": available_gpus,
-                      "msg": msg})
+    return jsonify({"status": status,
+                    "available_gpus": available_gpus,
+                    "msg": msg})
 
 
 @app.route("/client/register", methods=["POST"])
@@ -141,7 +157,7 @@ def client_register():
             status = "err"
             msg = f"client_id: {client_info.id} has been registered!"
         client_queue.put(cc)
-    return jsonify(**{"status": status, "msg": msg})
+    return jsonify({"status": status, "msg": msg})
 
 
 @app.route("/show/work", methods=["GET"])
@@ -157,7 +173,7 @@ def show_work():
         msg = str(err)
     finally:
         client_queue.put(cc)
-    return jsonify(**{"status": status, "msg": msg})
+    return jsonify({"status": status, "msg": msg})
 
 
 @app.route("/show/finished", methods=["GET"])
@@ -173,7 +189,7 @@ def show_finished():
         msg = str(err)
     finally:
         client_queue.put(cc)
-    return jsonify(**{"status": status, "msg": msg})
+    return jsonify({"status": status, "msg": msg})
 
 
 @app.route("/show/gpus", methods=["GET"])
@@ -190,39 +206,47 @@ def show_gpus():
         msg = str(err)
     finally:
         gpu_queue.put(gpu_info)
-    return jsonify(**{"status": status, "msg": msg})
+    return jsonify({"status": status, "msg": msg})
 
 
-@app.route("/api", methods=["GET"])
+@app.route("/api", methods=["GET", "OPTIONS"])
 def api():
-    gpu_info = show_gpus()
-    gpu_msg = gpu_info.json["msg"]
-    work_info = show_work()
-    work_msg = work_info.json["msg"]
-    finished_info = show_finished()
-    finished_msg = finished_info.json["msg"]
-    response = jsonify({
-        "gpu": gpu_msg,
-        "work_queue": work_msg,
-        "finished_queue": finished_msg
-    })
+    if request.method == "OPTIONS":
+        response = make_response()
+    else:
+        gpu_info = show_gpus()
+        gpu_msg = gpu_info.json["msg"]
+        work_info = show_work()
+        work_msg = work_info.json["msg"]
+        finished_info = show_finished()
+        finished_msg = finished_info.json["msg"]
+        response = jsonify({
+            "gpu": gpu_msg,
+            "work_queue": work_msg,
+            "finished_queue": finished_msg
+        })
+    response.headers["Access-Control-Allow-Origin"] = "*"
     return response
 
 
 @app.route("/", methods=["GET"])
 def index():
     global APP_PORT
-    # gpu_info = show_gpus()
-    # gpu_msg = gpu_info.json["msg"]
-    # work_info = show_work()
-    # work_msg = work_info.json
-    # finished_info = show_finished()
-    # finished_msg = finished_info.json
-    # return render_template("index.html",
-    #                        gpu_msg=gpu_msg,
-    #                        work_msg=work_msg,
-    #                        finished_msg=finished_msg)
-    return render_template("new_index.html", port=APP_PORT)
+    return render_template("index.html", port=APP_PORT)
+
+
+@app.route("/old", methods=["GET"])
+def old_index():
+    gpu_info = show_gpus()
+    gpu_msg = gpu_info.json["msg"]
+    work_info = show_work()
+    work_msg = work_info.json
+    finished_info = show_finished()
+    finished_msg = finished_info.json
+    return render_template("old_index.html",
+                           gpu_msg=gpu_msg,
+                           work_msg=work_msg,
+                           finished_msg=finished_msg)
 
 
 def check_gpu_info():

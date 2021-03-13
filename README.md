@@ -1,4 +1,4 @@
-# watchmen
+# Watchmen
 A simple and easy-to-use toolkit for GPU scheduling.
 
 ## Dependencies
@@ -38,7 +38,7 @@ $ python -m watchmen.server
 
 If you want the server to be running backend, try:
 ```bash
-$ nohup python -m watchmen.server &
+$ nohup python -m watchmen.server 1>watchmen.log 2>&1 &
 ```
 
 There are some configurations for the server
@@ -57,7 +57,8 @@ optional arguments:
   --request_interval REQUEST_INTERVAL
                         interval for gpu status requesting (seconds)
   --status_queue_keep_time STATUS_QUEUE_KEEP_TIME
-                        hours for keeping the client status
+                        hours for keeping the client status. set `-1` to keep
+                        all clients' status
 ```
 
 2. Modify the source code in your project:
@@ -70,15 +71,21 @@ client = WatchClient(id="short description of this running", gpus=[1],
 client.wait()
 ```
 
-When the program goes on after `client.wait()`, you are in the queue.
+When the program goes on after `client.wait()`, you are in the working queue.
+Watchmen supports two requesting mode:
+- `queue` mode means you are waiting for the gpus in `gpus` arguments.
+- `schedule` mode means you are waiting for the server to spare `req_gpu_num` of available GPUs in `gpus`.
 You can check examples in `example/` for further reading.
 
 ```bash
+# single card queue mode
 $ cd example && python single_card_mnist.py --id="single" --cuda=0 --wait
+# single card schedule mode
+$ cd example && python single_card_mnist.py --id="single schedule" --cuda=0,2,3 --req_gpu_num=1 --wait_mode="schedule" --wait
 # queue mode
 $ cd example && python multi_card_mnist.py --id="multi" --cuda=2,3 --wait
 # schedule mode
-$ cd example && python multi_card_mnist.py --id='multi card scheduling wait' --cuda=1,0,3 --req_gpu_num=2 --wait=schedule
+$ cd example && python multi_card_mnist.py --id='multi card scheduling wait' --cuda=1,0,3 --req_gpu_num=2 --wait="schedule"
 ```
 
 3. Check the queue in browser.
@@ -88,15 +95,18 @@ Open the following link to your browser: `http://<server ip address>:<server por
 And you can get a result like the demo below.
 Please be aware that the page is not going to change dynamically, so you can refresh the page manually to check the latest status.
 
-New Demo (scheduling mode supported)
+Home page: GPU status
 
-![Demo](demo.png)
+![HomePage](homepage.png)
 
-Old Demo (queue mode supported)
+Working queue:
+![WorkingQueue](working_queue.png)
 
-![Old Demo](demo_old.png)
+Finished queue:
+![FinishedQueue](finished_queue.png)
 
-4. Reminder when program is finished.
+
+1. Reminder when program is finished.
 
 `watchmen` also support email and other kinds of reminders for message informing.
 For example, you can send yourself an email when the program is finished.
@@ -120,7 +130,7 @@ send_email(
 To get more reminders, please check `watchmen/reminder.py`.
 
 ## UPDATE
-- v0.3.4: add `register_time` field, fix `check_finished` bug
+- v0.3.4: refreshed interface, add `register_time` field, fix `check_finished` bug
 - v0.3.3: fix `check_finished` bug in server end, quit the main thread if the sub-thread is quit, and remove the backend cmd in the main thread
 - v0.3.2: fix `WatchClient` bug
 - v0.3.1: change `Client` into `WatchClient`, fix `ClientCollection` and `send_email` bug

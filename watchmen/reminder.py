@@ -42,6 +42,10 @@ def send_dingtalk_msg(
     dingtalk_webhook_url: str,  # like `https://oapi.dingtalk.com/robot/send?access_token=***`
     message: str  # message content
 ):
+    r"""
+    Reference:
+        - https://github.com/huggingface/knockknock
+    """
     msg_template = {
         "msgtype": "text",
         "text": {
