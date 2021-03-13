@@ -3,7 +3,10 @@ modified from:
 https://github.com/pytorch/examples/blob/master/mnist/main.py
 """
 from __future__ import print_function
+
+import sys
 import argparse
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -12,6 +15,7 @@ from torchvision import datasets, transforms
 from torch.optim.lr_scheduler import StepLR
 
 from watchmen import WatchClient
+from watchmen.client import ClientMode
 
 
 class Net(nn.Module):
@@ -99,28 +103,41 @@ def main():
                         help='For Saving the current Model')
     parser.add_argument("--id", type=str, default="id",
                         help="identifier")
-    parser.add_argument("--cuda", type=int, default=2,
-                        help="cuda device")
+    parser.add_argument("--cuda", type=str, default="0",
+                        help="cuda devices, seperated by `,` with no spaces")
     parser.add_argument("--wait", action="store_true",
                         help="wait for watchmen signal")
+    parser.add_argument("--wait_mode", type=str,
+                        choices=["queue", "schedule"], default="queue",
+                        help="gpu waiting mode")
     args = parser.parse_args()
     torch.manual_seed(args.seed)
 
-    device = torch.device(f"cuda:{args.cuda}")
-
     """WATCHMEN"""
     if args.wait:
-        client = WatchClient(id=f"mnist single card {args.id} cuda={args.cuda}", gpus=[args.cuda],
+        if args.wait_mode == 'queue':
+            waiting_mode = ClientMode.QUEUE
+        else:
+            waiting_mode = ClientMode.SCHEDULE
+        client = WatchClient(id=f"mnist single card {args.id} cuda={args.cuda}",
+                             gpus=eval(f"[{args.cuda}]"),
+                             req_gpu_num=1, mode=waiting_mode,
                              server_host="127.0.0.1", server_port=62333)
-        client.wait()
+        # client.register()
+        available_gpus = []
+        available_gpus = client.wait()
+        if len(available_gpus) <= 0:
+            sys.exit(1)
+        else:
+            device = torch.device(f"cuda:{available_gpus[0]}")
     """END OF WATCHMEN"""
 
     train_kwargs = {'batch_size': args.batch_size}
     test_kwargs = {'batch_size': args.test_batch_size}
-    
+
     cuda_kwargs = {'num_workers': 1,
-                    'pin_memory': True,
-                    'shuffle': True}
+                   'pin_memory': True,
+                   'shuffle': True}
     train_kwargs.update(cuda_kwargs)
     test_kwargs.update(cuda_kwargs)
 
@@ -128,7 +145,7 @@ def main():
         transforms.ToTensor(),
         transforms.Normalize((0.1307,), (0.3081,))
         ])
-    
+
     dataset1 = datasets.MNIST('../data', train=True, download=True,
                        transform=transform)
     dataset2 = datasets.MNIST('../data', train=False,

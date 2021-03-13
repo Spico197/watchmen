@@ -5,126 +5,334 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Watchmen</title>
+  <style>
+    body {
+      margin: 0%;
+    }
+
+    #navbar {
+      overflow: hidden;
+      background-color: #333;
+    }
+
+    #navbar a {
+      float: left;
+      display: block;
+      color: #f2f2f2;
+      text-align: center;
+      padding: 14px;
+      text-decoration: none;
+    }
+
+    .bold {
+      font-weight: bold;
+    }
+
+    .selected {
+      background-color: rgb(110, 110, 110);
+    }
+
+    .content {
+      padding: 16px;
+    }
+
+    .add-margin {
+      margin-top: 100px;
+    }
+
+    .sticky {
+      position: fixed;
+      top: 0;
+      width: 100%;
+    }
+
+    .container {
+      display: flex;
+    }
+
+    .container span {
+      padding: 10px;
+    }
+
+    .styled-table {
+      border-radius: 5px;
+      border-collapse: collapse;
+      border-style: hidden;
+      /* hide standard table (collapsed) border */
+      box-shadow: 0 0 0 1px #3d3d3d;
+      /* this draws the table border  */
+      margin: 25px 0;
+      min-width: 400px;
+    }
+
+    .styled-table thead tr {
+      background-color: #3d3d3d;
+      color: #ffffff;
+    }
+
+    .styled-table th,
+    .styled-table td {
+      padding: 12px 15px;
+      border: 1px solid #ccc;
+    }
+
+    .right-align {
+      text-align: right;
+    }
+
+    .green {
+      color: green;
+    }
+
+    .red {
+      color: red;
+    }
+
+    .large-symbol {
+      font-size: x-large;
+    }
+
+    .waiting {
+      color: black;
+    }
+
+    .timeout {
+      color: red;
+    }
+
+    .ok {
+      color: green;
+    }
+  </style>
 </head>
 
 <body>
-  <h1>Watchmen GPU Scheduler</h1>
-  <div>
-    <h2>GPU Status</h2>
-    {% if 'hostname' in gpu_msg %}
-    <table border="2">
-      <p>{{ gpu_msg.hostname }} : {{ gpu_msg.query_time }}</p>
+  <div id="navbar" class="sticky">
+    <a id="homepage" class="bold">Watchmen GPU Scheduler</a>
+    <a id="working-queue">Working Queue</a>
+    <a id="finished-queue">Finished Queue</a>
+  </div>
+
+  <div id="main-body" class="content">
+    <div class="container">
+      <span class="bold">Connection: </span>
+      <span id="connection"></span>
+      <button id="update-button">Update</button>
+    </div>
+
+    <div class="container">
+      <span class="bold">Host Name: </span>
+      <span id="hostname"></span>
+    </div>
+
+    <div class="container">
+      <span class="bold">Query Time: </span>
+      <span id="query-time"></span>
+    </div>
+
+    <div id="content"></div>
+  </div>
+
+  <!-- <pre id="result"></pre> -->
+
+  <template id="homepage-template">
+    <table class="styled-table">
       <thead>
         <tr>
-          <th>Index</th>
+          <th>No.</th>
           <th>Name</th>
-          <th>Temp</th>
+          <th>Temp (℃)</th>
           <th>Util</th>
           <th>Memory</th>
-          <th>#Process</th>
+          <th>Process ( User: PID (Memory) )</th>
         </tr>
       </thead>
-      <tbody>
-        {% for gpu in gpu_msg.gpus %}
-        <tr>
-          <td>{{ gpu.index }}</td>
-          <td>{{ gpu.name }}</td>
-          <td>{{ gpu['temperature.gpu'] }}</td>
-          <td>{{ gpu['utilization.gpu'] }}</td>
-          <td>{{ gpu['memory.used'] }} / {{ gpu['memory.total'] }}</td>
-          <td>{{ gpu.processes|length }}</td>
-        </tr>
-        {% endfor %}
-      </tbody>
+      <tbody id="gpu-usage"></tbody>
     </table>
-    {% else %}
-    <p>{{ gpu_msg }}</p>
-    {% endif %}
-  </div>
-  <div>
-    <h2>Working Queue Status</h2>
-    {% if work_msg.status == "ok" %}
-    <table border="2">
+  </template>
+
+  <template id="working-queue-template">
+    <table class="styled-table">
       <thead>
         <tr>
-          <th>ID</th>
-          <th>Mode</th>
-          <th>GPU Scope</th>
-          <th>Request GPU Num</th>
           <th>Queue Num</th>
-          <th>Last Request Time</th>
           <th>Status</th>
-        </tr>
-      </thead>
-      <tbody>
-        {% for client in work_msg.msg %}
-        <tr>
-          <td>{{ client.id }}</td>
-          <td>{{ client.mode }}</td>
-          <td>{{ client.gpus }}</td>
-          <td>{{ client.req_gpu_num }}</td>
-          <td>{{ client.queue_num }}</td>
-          <td>{{ client.last_request_time }}</td>
-          <td>
-            {% if client.status == "ok" %}
-            <p style="color:green">OK</p>
-            {% elif client.status == "waiting" %}
-            <p>Waiting</p>
-            {% elif client.status == "timeout" %}
-            <p style="color:red">Timeout</p>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
-    </table>
-    {% else %}
-    <p>{{ work_msg }}</p>
-    {% endif %}
-  </div>
-  <div>
-    <h2>Finished Queue Status</h2>
-    {% if finished_msg.status == "ok" %}
-    <table border="2">
-      <thead>
-        <tr>
           <th>ID</th>
           <th>Mode</th>
-          <th>Request GPU Num</th>
           <th>GPU Scope</th>
+          <th>Request GPU Num</th>
+          <th>Register Time</th>
+          <th>Last Request Time</th>
+        </tr>
+      </thead>
+      <tbody id="working-queue-stats"></tbody>
+    </table>
+  </template>
+
+  <template id="finished-queue-template">
+    <table class="styled-table">
+      <thead>
+        <tr>
+          <th>Queue Num</th>
+          <th>Status</th>
+          <th>ID</th>
+          <th>Mode</th>
+          <th>GPU Scope</th>
+          <th>Request GPU Num</th>
           <th>Available GPUs</th>
-          <th>Queue Num</th>
+          <th>Register Time</th>
           <th>Last Request Time</th>
-          <th>Status</th>
         </tr>
       </thead>
-      <tbody>
-        {% for client in finished_msg.msg %}
-        <tr>
-          <td>{{ client.id }}</td>
-          <td>{{ client.mode }}</td>
-          <td>{{ client.req_gpu_num }}</td>
-          <td>{{ client.gpus }}</td>
-          <td>{{ client.available_gpus }}</td>
-          <td>{{ client.queue_num }}</td>
-          <td>{{ client.last_request_time }}</td>
-          <td>
-            {% if client.status == "ok" %}
-            <p style="color:green">OK</p>
-            {% elif client.status == "waiting" %}
-            <p>Waiting</p>
-            {% elif client.status == "timeout" %}
-            <p style="color:red">Timeout</p>
-            {% endif %}
-          </td>
-        </tr>
-        {% endfor %}
-      </tbody>
+      <tbody id="finished-queue-stats"></tbody>
     </table>
-    {% else %}
-    <p>{{ finished_msg }}</p>
-    {% endif %}
-  </div>
+  </template>
+
+
+  <script type="text/javascript">
+    var port = {{ port }}
+    var responseJsonData = null
+    var selected = "homepage-template"
+
+    // const result = document.getElementById("result")
+    const connection = document.getElementById("connection")
+    const updateButton = document.getElementById("update-button")
+    const navbar = document.getElementById("navbar")
+    const mainBody = document.getElementById('main-body')
+    const content = document.getElementById('content')
+    const homepageElem = document.getElementById("homepage")
+    const workingElem = document.getElementById("working-queue")
+    const finishedElem = document.getElementById("finished-queue")
+
+    window.addEventListener('DOMContentLoaded', async () => {
+      mainBody.style.marginTop = `${navbar.offsetHeight}px`
+      updateTemplate()
+      await getInfoAndUpdate()
+    })
+
+    function updateTemplate(useCacheData=true) {
+      const template = document.getElementById(selected);
+      const view = template.content.cloneNode(true);
+      content.innerHTML = '';
+      content.appendChild(view);
+
+      if (useCacheData && responseJsonData !== null) {
+        updateFrame(responseJsonData)
+      }
+    }
+
+    function updateFrame(data) {
+      updateTemplate(false)
+      const hostnameElem = document.getElementById("hostname")
+      const queryTimeElem = document.getElementById("query-time")
+      hostnameElem.innerText = data.gpu.hostname
+      queryTimeElem.innerText = data.gpu.query_time
+
+      if (selected === "homepage-template") {
+        const gpuUsageElem = document.getElementById("gpu-usage")
+        for (let i = 0; i < data.gpu.gpus.length; i++) {
+          let gpu = data.gpu.gpus[i]
+          let tr = document.createElement("tr")
+          let processes = []
+          for (let process of gpu.processes) {
+            processes.push(`${process.username}:${process.pid}(${process.gpu_memory_usage})`)
+          }
+          tr.innerHTML = `<td>${gpu.index}</td> <td>${gpu.name}</td> <td class="right-align">${gpu["temperature.gpu"]}</td> <td class="right-align">${gpu["utilization.gpu"]}</td> <td class="right-align">${gpu["memory.used"]} / ${gpu["memory.total"]}</td> <td>${processes}</td>`
+          gpuUsageElem.appendChild(tr)
+        }
+      } else if (selected === "working-queue-template") {
+        const workingStats = document.getElementById("working-queue-stats")
+        for (let i = 0; i < data.work_queue.length; i++) {
+          let c = data.work_queue[i]
+          let tr = document.createElement("tr")
+          tr.innerHTML = `<td>${c.queue_num}</td> <td class="${c.status}">${c.status}</td> <td>${c.id}</td> <td>${c.mode}</td> <td>${c.gpus}</td> <td>${c.req_gpu_num}</td> <td>${c.register_time}</td> <td>${c.last_request_time}</td>`
+          workingStats.appendChild(tr)
+        }
+      } else if (selected === "finished-queue-template") {
+        const finishedStats = document.getElementById("finished-queue-stats")
+        for (let i = 0; i < data.finished_queue.length; i++) {
+          let c = data.finished_queue[i]
+          let tr = document.createElement("tr")
+          tr.innerHTML = `<td>${c.queue_num}</td> <td class="${c.status}">${c.status}</td> <td>${c.id}</td> <td>${c.mode}</td> <td>${c.gpus}</td> <td>${c.req_gpu_num}</td> <td>${c.available_gpus}</td> <td>${c.register_time}</td> <td>${c.last_request_time}</td>`
+          finishedStats.appendChild(tr)
+        }
+      }
+    }
+
+    function timeout(ms, promise) {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => {
+          reject(new Error('TIMEOUT'))
+        }, ms)
+
+        promise
+          .then(value => {
+            clearTimeout(timer)
+            resolve(value)
+          })
+          .catch(reason => {
+            clearTimeout(timer)
+            reject(reason)
+          })
+      })
+    }
+
+    async function getInfoAndUpdate() {
+      await timeout(5000, fetch("http://localhost:23333/api"))
+        .then(async (response) => {
+          if (!response.ok) {
+            connection.classList.remove("green")
+            connection.classList.add("red")
+            connection.innerText = "■ ERROR"
+          } else {
+            let responseJson = await response.json()
+            connection.classList.remove("red")
+            connection.classList.add("green")
+            connection.innerText = "● OK"
+            responseJsonData = responseJson
+            updateFrame(responseJson)
+          }
+        })
+        .catch(err => {
+          console.error(err)
+          connection.classList.remove("green")
+          connection.classList.add("red")
+          connection.innerText = "■ ERROR"
+        })
+    }
+
+    setInterval(getInfoAndUpdate, 10000)
+
+    homepageElem.addEventListener("click", (e) => {
+      selected = "homepage-template"
+      workingElem.classList.remove("selected")
+      finishedElem.classList.remove("selected")
+      updateTemplate()
+    })
+
+    workingElem.addEventListener("click", (e) => {
+      selected = "working-queue-template"
+      workingElem.classList.add("selected")
+      finishedElem.classList.remove("selected")
+      updateTemplate()
+    })
+
+    finishedElem.addEventListener("click", (e) => {
+      selected = "finished-queue-template"
+      workingElem.classList.remove("selected")
+      finishedElem.classList.add("selected")
+      updateTemplate()
+    })
+
+
+    window.addEventListener('resize', (e) => {
+      mainBody.style.marginTop = `${navbar.offsetHeight}px`
+    })
+
+    updateButton.addEventListener('click', async (e) => {
+      await getInfoAndUpdate()
+    })
+  </script>
 </body>
 
 </html>

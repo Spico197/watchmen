@@ -4,8 +4,8 @@ with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
-    name='gpu-watchmen',  
-    version='0.3.3',
+    name='gpu-watchmen',
+    version='0.3.4',
     author="Tong Zhu",
     author_email="tzhu1997@outlook.com",
     description="watchmen for GPU scheduling",

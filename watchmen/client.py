@@ -27,22 +27,23 @@ class ClientMode(str, Enum):
 
 
 class ClientModel(BaseModel):
-    id: str # identifier in string format
-    mode: Optional[ClientMode] = ClientMode.QUEUE # `queue` (wait for specific gpus) or `schedule` (schedule by the server automatically)
+    id: str  # identifier in string format
+    mode: Optional[ClientMode] = ClientMode.QUEUE  # `queue` (wait for specific gpus) or `schedule` (schedule by the server automatically)
+    register_time: Optional[datetime.datetime] = None   # datetime.datetime
     last_request_time: Optional[datetime.datetime] = None   # datetime.datetime
     status: Optional[ClientStatus] = ClientStatus.WAITING   # `waiting`, `timeout`, `ok`
     queue_num: Optional[int] = 0    # queue number
     gpus: Optional[List[int]] = []    # `queue` mode: gpus for requesting to run on; `schedule` mode: available gpu scope.
-    msg: Optional[str] = "" # error or status message
-    req_gpu_num : Optional[int] = 0 # `schedule` mode: how many gpus are requested
+    msg: Optional[str] = ""  # error or status message
+    req_gpu_num: Optional[int] = 0  # `schedule` mode: how many gpus are requested
     available_gpus: Optional[List[int]] = []
 
 
 class ClientCollection(object):
     def __init__(self):
-        self.work_queue = OrderedDict() # only `ok` and `waiting`
+        self.work_queue = OrderedDict()  # only `ok` and `waiting`
         self.finished_queue = OrderedDict()
-    
+
     def mark_finished(self, client_id: str):
         self.finished_queue[client_id] = self.work_queue[client_id]
         self.work_queue.pop(client_id)
@@ -53,14 +54,12 @@ class ClientCollection(object):
         all_clients.sort(key=lambda x: x.last_request_time)
         all_clients.extend(list(self.work_queue.values()))
         return all_clients
-    
+
     def __getitem__(self, index: str):
         if index in self.work_queue:
             return self.work_queue[index]
-        elif index in self.finished_queue:
-            return self.finished_queue[index]
         else:
-            raise IndexError(f"index: {index} does not exist")
+            raise IndexError(f"index: {index} does not exist or has finished")
 
     def __contains__(self, index: str):
         return index in self.work_queue
@@ -89,10 +88,10 @@ class WatchClient(object):
 
     def _validate_gpus(self, gpus: List[int]):
         return check_gpus_existence(gpus)
-    
+
     def _validate_mode(self, mode: ClientMode):
         return ClientMode.has_value(mode)
-    
+
     def _validate_req_gpu_num(self, req_gpu_num: int):
         return check_req_gpu_num(req_gpu_num)
 
@@ -122,11 +121,12 @@ class WatchClient(object):
             elif result["msg"] == ClientStatus.OK:
                 return True, result["available_gpus"]
             elif result["msg"] == ClientStatus.TIMEOUT:
-                raise RuntimeError(f"status changed to TIMEOUT")
+                raise RuntimeError("status changed to TIMEOUT")
 
     def wait(self):
         self.register()
         flag = False
+        available_gpus = []
         while not flag:
             flag, available_gpus = self.ping()
             time.sleep(10)
