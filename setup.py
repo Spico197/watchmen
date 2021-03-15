@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setuptools.setup(
     name='gpu-watchmen',
-    version='0.3.4',
+    version='0.3.5',
     author="Tong Zhu",
     author_email="tzhu1997@outlook.com",
     description="watchmen for GPU scheduling",
