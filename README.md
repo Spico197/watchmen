@@ -130,6 +130,7 @@ send_email(
 To get more reminders, please check `watchmen/reminder.py`.
 
 ## UPDATE
+- v0.3.6: fix front-end api hostname bug
 - v0.3.5: fix front-end api port bug
 - v0.3.4: refreshed interface, add `register_time` field, fix `check_finished` bug
 - v0.3.3: fix `check_finished` bug in server end, quit the main thread if the sub-thread is quit, and remove the backend cmd in the main thread

@@ -278,7 +278,7 @@
     }
 
     async function getInfoAndUpdate() {
-      await timeout(5000, fetch(`http://localhost:${port}/api`))
+      await timeout(5000, fetch(`http://${window.location.hostname}:${port}/api`))
         .then(async (response) => {
           if (!response.ok) {
             connection.classList.remove("green")
