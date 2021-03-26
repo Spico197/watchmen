@@ -41,9 +41,11 @@ logger.addHandler(stream_handler)
 
 app = Flask("watchmen.server")
 gpu_queue = queue.Queue()
-gpu_queue.put(GPUInfo())
+gpu_info = GPUInfo()
+gpu_queue.put(1)
 client_queue = queue.Queue()
-client_queue.put(ClientCollection())
+cc = ClientCollection()
+client_queue.put(1)
 
 APP_PORT = None
 
@@ -105,7 +107,6 @@ def client_ping():
     available_gpus = []
     msg = ""
     client_id = client_info.id
-    cc = client_queue.get()
     if client_id in cc:
         cc[client_id].last_request_time = datetime.datetime.now()
         status = "ok"
@@ -114,7 +115,6 @@ def client_ping():
     else:
         status = "err"
         msg = "cannot ping before register"
-    client_queue.put(cc)
     return jsonify({"status": status,
                     "available_gpus": available_gpus,
                     "msg": msg})
@@ -139,7 +139,6 @@ def client_register():
         status = "err"
         msg = "`req_gpu_num` is not valid"
     else:
-        cc = client_queue.get()
         if client_info.id not in cc:
             client = ClientModel(
                 id=client_info.id,
@@ -156,7 +155,6 @@ def client_register():
         else:
             status = "err"
             msg = f"client_id: {client_info.id} has been registered!"
-        client_queue.put(cc)
     return jsonify({"status": status, "msg": msg})
 
 
@@ -164,15 +162,12 @@ def client_register():
 def show_work():
     status = ""
     msg = ""
-    cc = client_queue.get()
     try:
         status = "ok"
         msg = [x.dict() for x in cc.work_queue.values()]
     except Exception as err:
         status = "err"
         msg = str(err)
-    finally:
-        client_queue.put(cc)
     return jsonify({"status": status, "msg": msg})
 
 
@@ -180,15 +175,12 @@ def show_work():
 def show_finished():
     status = ""
     msg = ""
-    cc = client_queue.get()
     try:
         status = "ok"
         msg = [x.dict() for x in cc.finished_queue.values()]
     except Exception as err:
         status = "err"
         msg = str(err)
-    finally:
-        client_queue.put(cc)
     return jsonify({"status": status, "msg": msg})
 
 
@@ -196,7 +188,6 @@ def show_finished():
 def show_gpus():
     status = ""
     msg = ""
-    gpu_info = gpu_queue.get()
     try:
         status = "ok"
         msg = gpu_info.gs.jsonify()
@@ -204,8 +195,6 @@ def show_gpus():
     except Exception as err:
         status = "err"
         msg = str(err)
-    finally:
-        gpu_queue.put(gpu_info)
     return jsonify({"status": status, "msg": msg})
 
 
@@ -250,18 +239,18 @@ def old_index():
 
 
 def check_gpu_info():
-    info = gpu_queue.get()
-    info.new_query()
-    gpu_queue.put(info)
+    gpu_info.new_query()
+    logger.info("check gpu info")
 
 
 def check_work(queue_timeout):
-    cc = client_queue.get()
+    logger.info("regular check")
     marked_finished = []
     reserved_gpus = set()  # whether there can be multiple `ok` in one scan
     queue_num = 0
     for client_id, client in cc.work_queue.items():
         time_delta = datetime.datetime.now() - client.last_request_time
+        logger.info(f"client: {client.id}, time_delta.seconds: {time_delta.seconds}, time_delta: {time_delta}")
         if time_delta.seconds > queue_timeout:
             if client.status != ClientStatus.OK:
                 client.status = ClientStatus.TIMEOUT
@@ -272,9 +261,8 @@ def check_work(queue_timeout):
         ok = False
         available_gpus = []
         if client.status == ClientStatus.OK:
-            reserved_gpus |= set(client.gpus)
+            reserved_gpus |= set(client.available_gpus)
         else:
-            gpu_info = gpu_queue.get()
             try:
                 if client.mode == 'queue':
                     ok = gpu_info.is_gpus_available(client.gpus)
@@ -290,21 +278,21 @@ def check_work(queue_timeout):
                 client.msg = str(err)
             except RuntimeError as err:
                 client.msg = str(err)
-            finally:
-                gpu_queue.put(gpu_info)
-        if ok and len(set(client.gpus) & reserved_gpus) <= 0:
+
+        if ok and len(set(available_gpus) & reserved_gpus) <= 0:
             client.status = ClientStatus.OK
             client.available_gpus = available_gpus
-            reserved_gpus |= set(client.gpus)
+            reserved_gpus |= set(client.available_gpus)
+            logger.info(f"client: {client.id} is ready, available gpus: {client.available_gpus}")
         queue_num += 1
 
     for client_id in marked_finished:
+        logger.info(f"client {client.id} marked as finished, status: {client.status}")
         cc.mark_finished(client_id)
-    client_queue.put(cc)
 
 
 def check_finished(status_queue_keep_time):
-    cc = client_queue.get()
+    logger.info("check out-dated finished clients")
     marked_delete_ids = []
     for client_id, client in cc.finished_queue.items():
         delta = datetime.datetime.now() - client.last_request_time
@@ -312,7 +300,7 @@ def check_finished(status_queue_keep_time):
             marked_delete_ids.append(client_id)
     for client_id in marked_delete_ids:
         cc.finished_queue.pop(client_id)
-    client_queue.put(cc)
+        logger.info(f"remove {client.id} from finished queue")
 
 
 def regular_check(request_interval, queue_timeout, status_queue_keep_time):
@@ -347,7 +335,7 @@ if __name__ == "__main__":
                         help="host address for api server")
     parser.add_argument("--port", type=str, default=62333,
                         help="port for api server")
-    parser.add_argument("--queue_timeout", type=int, default=60,
+    parser.add_argument("--queue_timeout", type=int, default=120,
                         help="timeout for queue waiting (seconds)")
     parser.add_argument("--request_interval", type=int, default=1,
                         help="interval for gpu status requesting (seconds)")

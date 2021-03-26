@@ -70,7 +70,7 @@ class WatchClient(object):
                  server_host: str, server_port: int,
                  mode: Optional[ClientMode] = ClientMode.QUEUE,
                  req_gpu_num: Optional[int] = 0,
-                 timeout: Optional[int] = 10):
+                 timeout: Optional[int] = 60):
         self.base_url = f"http://{server_host}:{server_port}"
         self.id = f"{getpass.getuser()}@{id}"
         if self._validate_gpus(gpus):

@@ -1,11 +1,14 @@
 import setuptools
 
+from watchmen import __version__
+
+
 with open("README.md", "r") as fh:
     long_description = fh.read()
 
 setuptools.setup(
     name='gpu-watchmen',
-    version='0.3.6',
+    version=__version__,
     author="Tong Zhu",
     author_email="tzhu1997@outlook.com",
     description="watchmen for GPU scheduling",

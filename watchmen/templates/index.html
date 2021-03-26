@@ -278,7 +278,7 @@
     }
 
     async function getInfoAndUpdate() {
-      await timeout(5000, fetch(`http://${window.location.hostname}:${port}/api`))
+      await timeout(30000, fetch(`http://${window.location.hostname}:${port}/api`))
         .then(async (response) => {
           if (!response.ok) {
             connection.classList.remove("green")
@@ -301,7 +301,7 @@
         })
     }
 
-    setInterval(getInfoAndUpdate, 10000)
+    setInterval(getInfoAndUpdate, 60000)
 
     homepageElem.addEventListener("click", (e) => {
       selected = "homepage-template"
