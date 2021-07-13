@@ -124,7 +124,7 @@ class WatchClient(object):
             if result["msg"] == ClientStatus.WAITING:
                 return False, result["available_gpus"]
             elif result["msg"] == ClientStatus.READY:
-                return False, result["available_gpus"]
+                return True, result["available_gpus"]
             elif result["msg"] == ClientStatus.OK:
                 logger.warning("Status is OK, which has finished requesting GPUs.")
                 return False, result["available_gpus"]
