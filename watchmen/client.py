@@ -1,4 +1,5 @@
 import time
+import logging
 import datetime
 import getpass
 from enum import Enum
@@ -11,9 +12,13 @@ from pydantic import BaseModel
 from watchmen.listener import check_gpus_existence, check_req_gpu_num
 
 
+logger = logging.getLogger("common")
+
+
 class ClientStatus(str, Enum):
     WAITING = "waiting"
     TIMEOUT = "timeout"
+    READY = "ready"
     OK = "ok"
 
 
@@ -118,8 +123,11 @@ class WatchClient(object):
         else:
             if result["msg"] == ClientStatus.WAITING:
                 return False, result["available_gpus"]
+            elif result["msg"] == ClientStatus.READY:
+                return False, result["available_gpus"]
             elif result["msg"] == ClientStatus.OK:
-                return True, result["available_gpus"]
+                logger.warning("Status is OK, which has finished requesting GPUs.")
+                return False, result["available_gpus"]
             elif result["msg"] == ClientStatus.TIMEOUT:
                 raise RuntimeError("status changed to TIMEOUT")
 
