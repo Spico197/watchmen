@@ -246,7 +246,7 @@ def check_gpu_info():
 def check_work(queue_timeout):
     logger.info("regular check")
     marked_finished = []
-    reserved_gpus = set()  # whether there can be multiple `ok` in one scan
+    reserved_gpus = set()
     client_list = []
     queue_num = 0
     for client_id, client in cc.work_queue.items():
@@ -257,7 +257,8 @@ def check_work(queue_timeout):
                 client.status = ClientStatus.TIMEOUT
             else:
                 client.status = ClientStatus.OK
-            client.queue_num = -1  # invalid client
+            # invalid client
+            client.queue_num = -1
             marked_finished.append(client_id)
             continue
         client.queue_num = queue_num
@@ -282,11 +283,12 @@ def check_work(queue_timeout):
             except RuntimeError as err:
                 client.msg = str(err)
 
-        client_list.append(client_id, client, ok, set(available_gpus))
+        client_list.append([client_id, client, ok, set(available_gpus)])
         queue_num += 1
 
+    # post check and assignment, and make sure gpus of `ready` clients will not be assigned to the others
     for client_id, client, ok, available_gpu_set in client_list:
-        if ok and len(available_gpu_set & reserved_gpus) < 1:
+        if ok and len(available_gpu_set) > 0 and len(available_gpu_set & reserved_gpus) < 1:
             client.status = ClientStatus.READY
             client.available_gpus = available_gpus
             reserved_gpus |= set(client.available_gpus)
