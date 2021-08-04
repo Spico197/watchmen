@@ -103,6 +103,10 @@
     .ok {
       color: green;
     }
+
+    .ready {
+      color: green;
+    }
   </style>
 </head>
 
@@ -161,6 +165,7 @@
           <th>Mode</th>
           <th>GPU Scope</th>
           <th>Request GPU Num</th>
+          <th>Available GPUs</th>
           <th>Register Time</th>
           <th>Last Request Time</th>
         </tr>
@@ -245,7 +250,7 @@
         for (let i = 0; i < data.work_queue.length; i++) {
           let c = data.work_queue[i]
           let tr = document.createElement("tr")
-          tr.innerHTML = `<td>${c.queue_num}</td> <td class="${c.status}">${c.status}</td> <td>${c.id}</td> <td>${c.mode}</td> <td>${c.gpus}</td> <td>${c.req_gpu_num}</td> <td>${c.register_time}</td> <td>${c.last_request_time}</td>`
+          tr.innerHTML = `<td>${c.queue_num}</td> <td class="${c.status}">${c.status}</td> <td>${c.id}</td> <td>${c.mode}</td> <td>${c.gpus}</td> <td>${c.req_gpu_num}</td> <td>${c.available_gpus}</td> <td>${c.register_time}</td> <td>${c.last_request_time}</td>`
           workingStats.appendChild(tr)
         }
       } else if (selected === "finished-queue-template") {

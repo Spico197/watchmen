@@ -246,21 +246,25 @@ def check_gpu_info():
 def check_work(queue_timeout):
     logger.info("regular check")
     marked_finished = []
-    reserved_gpus = set()  # whether there can be multiple `ok` in one scan
+    reserved_gpus = set()
+    client_list = []
     queue_num = 0
     for client_id, client in cc.work_queue.items():
         time_delta = datetime.datetime.now() - client.last_request_time
         logger.info(f"client: {client.id}, time_delta.seconds: {time_delta.seconds}, time_delta: {time_delta}")
         if time_delta.seconds > queue_timeout:
-            if client.status != ClientStatus.OK:
+            if client.status != ClientStatus.READY:
                 client.status = ClientStatus.TIMEOUT
-            client.queue_num = -1  # invalid client
+            else:
+                client.status = ClientStatus.OK
+            # invalid client
+            client.queue_num = -1
             marked_finished.append(client_id)
             continue
         client.queue_num = queue_num
         ok = False
         available_gpus = []
-        if client.status == ClientStatus.OK:
+        if client.status == ClientStatus.READY:
             reserved_gpus |= set(client.available_gpus)
         else:
             try:
@@ -279,12 +283,16 @@ def check_work(queue_timeout):
             except RuntimeError as err:
                 client.msg = str(err)
 
-        if ok and len(set(available_gpus) & reserved_gpus) <= 0:
-            client.status = ClientStatus.OK
+        client_list.append([client_id, client, ok, set(available_gpus)])
+        queue_num += 1
+
+    # post check and assignment, and make sure gpus of `ready` clients will not be assigned to the others
+    for client_id, client, ok, available_gpu_set in client_list:
+        if ok and len(available_gpu_set) > 0 and len(available_gpu_set & reserved_gpus) < 1:
+            client.status = ClientStatus.READY
             client.available_gpus = available_gpus
             reserved_gpus |= set(client.available_gpus)
             logger.info(f"client: {client.id} is ready, available gpus: {client.available_gpus}")
-        queue_num += 1
 
     for client_id in marked_finished:
         logger.info(f"client {client.id} marked as finished, status: {client.status}")
@@ -335,7 +343,7 @@ if __name__ == "__main__":
                         help="host address for api server")
     parser.add_argument("--port", type=str, default=62333,
                         help="port for api server")
-    parser.add_argument("--queue_timeout", type=int, default=120,
+    parser.add_argument("--queue_timeout", type=int, default=300,
                         help="timeout for queue waiting (seconds)")
     parser.add_argument("--request_interval", type=int, default=1,
                         help="interval for gpu status requesting (seconds)")
