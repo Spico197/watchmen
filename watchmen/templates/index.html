@@ -168,6 +168,7 @@
           <th>Available GPUs</th>
           <th>Register Time</th>
           <th>Last Request Time</th>
+          <th>Action</th>
         </tr>
       </thead>
       <tbody id="working-queue-stats"></tbody>
@@ -215,7 +216,7 @@
       await getInfoAndUpdate()
     })
 
-    function updateTemplate(useCacheData=true) {
+    function updateTemplate(useCacheData = true) {
       const template = document.getElementById(selected);
       const view = template.content.cloneNode(true);
       content.innerHTML = '';
@@ -250,9 +251,18 @@
         for (let i = 0; i < data.work_queue.length; i++) {
           let c = data.work_queue[i]
           let tr = document.createElement("tr")
-          tr.innerHTML = `<td>${c.queue_num}</td> <td class="${c.status}">${c.status}</td> <td>${c.id}</td> <td>${c.mode}</td> <td>${c.gpus}</td> <td>${c.req_gpu_num}</td> <td>${c.available_gpus}</td> <td>${c.register_time}</td> <td>${c.last_request_time}</td>`
+          let cancelButton = `<button class="cancel-btn" data-client-id="${c.id}">Cancel</button>`
+          tr.innerHTML = `<td>${c.queue_num}</td> <td class="${c.status}">${c.status}</td> <td>${c.id}</td> <td>${c.mode}</td> <td>${c.gpus}</td> <td>${c.req_gpu_num}</td> <td>${c.available_gpus}</td> <td>${c.register_time}</td> <td>${c.last_request_time}</td> <td>${cancelButton}</td>`
           workingStats.appendChild(tr)
         }
+
+        // Add event listeners to cancel buttons
+        document.querySelectorAll('.cancel-btn').forEach(button => {
+          button.addEventListener('click', async (e) => {
+            const clientId = e.target.dataset.clientId
+            await cancelClient(clientId)
+          })
+        })
       } else if (selected === "finished-queue-template") {
         const finishedStats = document.getElementById("finished-queue-stats")
         for (let i = 0; i < data.finished_queue.length; i++) {
@@ -337,6 +347,30 @@
     updateButton.addEventListener('click', async (e) => {
       await getInfoAndUpdate()
     })
+
+    async function cancelClient(clientId) {
+      try {
+        const response = await fetch(`http://${window.location.hostname}:${port}/client/cancel`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ id: clientId }),
+        })
+
+        const data = await response.json()
+        if (data.status === "ok") {
+          alert(`Client ${clientId} cancelled successfully`)
+          // Refresh the data
+          await getInfoAndUpdate()
+        } else {
+          alert(`Error: ${data.msg}`)
+        }
+      } catch (error) {
+        console.error('Error cancelling client:', error)
+        alert(`Error cancelling client: ${error.message}`)
+      }
+    }
   </script>
 </body>
 

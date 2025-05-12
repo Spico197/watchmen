@@ -20,6 +20,7 @@ class ClientStatus(str, Enum):
     TIMEOUT = "timeout"
     READY = "ready"
     OK = "ok"
+    CANCELLED = "cancelled"
 
 
 class ClientMode(str, Enum):
@@ -130,6 +131,8 @@ class WatchClient(object):
                 return False, result["available_gpus"]
             elif result["msg"] == ClientStatus.TIMEOUT:
                 raise RuntimeError("status changed to TIMEOUT")
+            elif result["msg"] == ClientStatus.CANCELLED:
+                raise RuntimeError("client has been cancelled")
 
     def wait(self):
         self.register()

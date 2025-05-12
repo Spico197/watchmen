@@ -1,34 +1,27 @@
 import os
 import sys
-import json
 import queue
 import logging
-import readline
+import readline  # noqa: F401
 import datetime
 import argparse
 import threading
-from collections import OrderedDict
 
 from flask import Flask, jsonify, request, render_template
 from flask.helpers import make_response
-from flask.json import JSONEncoder
+from flask.json.provider import DefaultJSONProvider
 from apscheduler.schedulers.blocking import BlockingScheduler
 
 from watchmen.listener import (
     is_single_gpu_totally_free,
     check_gpus_existence,
     check_req_gpu_num,
-    GPUInfo
+    GPUInfo,
 )
-from watchmen.client import (
-    ClientStatus,
-    ClientMode,
-    ClientModel,
-    ClientCollection
-)
+from watchmen.client import ClientStatus, ClientMode, ClientModel, ClientCollection
 
 
-apscheduler_logger = logging.getLogger('apscheduler')
+apscheduler_logger = logging.getLogger("apscheduler")
 apscheduler_logger.setLevel(logging.ERROR)
 logger = logging.getLogger("common")
 logger.setLevel(logging.INFO)
@@ -50,7 +43,7 @@ client_queue.put(1)
 APP_PORT = None
 
 
-class CustomJSONEncoder(JSONEncoder):
+class CustomJSONProvider(DefaultJSONProvider):
     def default(self, obj):
         try:
             if isinstance(obj, datetime.datetime):
@@ -60,8 +53,10 @@ class CustomJSONEncoder(JSONEncoder):
             pass
         else:
             return list(iterable)
-        return JSONEncoder.default(self, obj)
-app.json_encoder = CustomJSONEncoder
+        return DefaultJSONProvider.default(self, obj)
+
+
+app.json_provider_class = CustomJSONProvider
 
 
 @app.route("/gpu/<int:gpu_id>")
@@ -83,12 +78,9 @@ def get_gpus_status(gpu_ids: str):
     msg = ""
     detail = []
     try:
-        gpu_ids = sorted(map(int, gpu_ids.split(',')))
+        gpu_ids = sorted(map(int, gpu_ids.split(",")))
         for gpu_id in gpu_ids:
-            detail.append({
-                "gpu": gpu_id,
-                "status": is_single_gpu_totally_free(gpu_id)
-            })
+            detail.append({"gpu": gpu_id, "status": is_single_gpu_totally_free(gpu_id)})
         if all(detail):
             msg = True
         else:
@@ -112,12 +104,16 @@ def client_ping():
         status = "ok"
         available_gpus = cc[client_id].available_gpus
         msg = cc[client_id].status
+    elif client_id in cc.finished_queue:
+        status = "ok"
+        available_gpus = cc.finished_queue[client_id].available_gpus
+        msg = cc.finished_queue[client_id].status
     else:
         status = "err"
-        msg = "cannot ping before register"
-    return jsonify({"status": status,
-                    "available_gpus": available_gpus,
-                    "msg": msg})
+        msg = "client not registered or has been cancelled"
+    info = {"status": status, "available_gpus": available_gpus, "msg": msg}
+    logger.info(f"client {client_id} ping: {info}")
+    return jsonify(info)
 
 
 @app.route("/client/register", methods=["POST"])
@@ -134,8 +130,9 @@ def client_register():
     elif not check_gpus_existence(client_info.gpus):
         status = "err"
         msg = "check the gpus existence"
-    elif client_info.mode == ClientMode.SCHEDULE and \
-            not check_req_gpu_num(client_info.req_gpu_num):
+    elif client_info.mode == ClientMode.SCHEDULE and not check_req_gpu_num(
+        client_info.req_gpu_num
+    ):
         status = "err"
         msg = "`req_gpu_num` is not valid"
     else:
@@ -148,13 +145,38 @@ def client_register():
                 last_request_time=datetime.datetime.now(),
                 queue_num=len(cc.work_queue),
                 gpus=client_info.gpus,
-                req_gpu_num=client_info.req_gpu_num
+                req_gpu_num=client_info.req_gpu_num,
             )
             cc.work_queue[client.id] = client
             status = "ok"
         else:
             status = "err"
             msg = f"client_id: {client_info.id} has been registered!"
+    return jsonify({"status": status, "msg": msg})
+
+
+@app.route("/client/cancel", methods=["POST"])
+def client_cancel():
+    status = ""
+    msg = ""
+    try:
+        client_id = request.json.get("id")
+        if client_id in cc:
+            client = cc[client_id]
+            if client.status == ClientStatus.WAITING:
+                client.status = ClientStatus.CANCELLED
+                cc.mark_finished(client_id)
+                status = "ok"
+                msg = f"Client {client_id} cancelled successfully"
+            else:
+                status = "err"
+                msg = f"Client {client_id} is not waiting"
+        else:
+            status = "err"
+            msg = f"Client {client_id} not found"
+    except Exception as err:
+        status = "err"
+        msg = str(err)
     return jsonify({"status": status, "msg": msg})
 
 
@@ -209,11 +231,9 @@ def api():
         work_msg = work_info.json["msg"]
         finished_info = show_finished()
         finished_msg = finished_info.json["msg"]
-        response = jsonify({
-            "gpu": gpu_msg,
-            "work_queue": work_msg,
-            "finished_queue": finished_msg
-        })
+        response = jsonify(
+            {"gpu": gpu_msg, "work_queue": work_msg, "finished_queue": finished_msg}
+        )
     response.headers["Access-Control-Allow-Origin"] = "*"
     return response
 
@@ -232,10 +252,9 @@ def old_index():
     work_msg = work_info.json
     finished_info = show_finished()
     finished_msg = finished_info.json
-    return render_template("old_index.html",
-                           gpu_msg=gpu_msg,
-                           work_msg=work_msg,
-                           finished_msg=finished_msg)
+    return render_template(
+        "old_index.html", gpu_msg=gpu_msg, work_msg=work_msg, finished_msg=finished_msg
+    )
 
 
 def check_gpu_info():
@@ -251,7 +270,9 @@ def check_work(queue_timeout):
     queue_num = 0
     for client_id, client in cc.work_queue.items():
         time_delta = datetime.datetime.now() - client.last_request_time
-        logger.info(f"client: {client.id}, time_delta.seconds: {time_delta.seconds}, time_delta: {time_delta}")
+        logger.info(
+            f"client: {client.id}, time_delta.seconds: {time_delta.seconds}, time_delta: {time_delta}"
+        )
         if time_delta.seconds > queue_timeout:
             if client.status != ClientStatus.READY:
                 client.status = ClientStatus.TIMEOUT
@@ -268,12 +289,13 @@ def check_work(queue_timeout):
             reserved_gpus |= set(client.available_gpus)
         else:
             try:
-                if client.mode == 'queue':
+                if client.mode == "queue":
                     ok = gpu_info.is_gpus_available(client.gpus)
                     available_gpus = client.gpus
-                elif client.mode == 'schedule':
+                elif client.mode == "schedule":
                     ok, available_gpus = gpu_info.is_req_gpu_num_satisfied(
-                        client.gpus, client.req_gpu_num)
+                        client.gpus, client.req_gpu_num
+                    )
                 else:
                     raise RuntimeError(f"Not supported mode: {client.mode}")
             except IndexError as err:
@@ -288,11 +310,17 @@ def check_work(queue_timeout):
 
     # post check and assignment, and make sure gpus of `ready` clients will not be assigned to the others
     for client_id, client, ok, available_gpu_set in client_list:
-        if ok and len(available_gpu_set) > 0 and len(available_gpu_set & reserved_gpus) < 1:
+        if (
+            ok
+            and len(available_gpu_set) > 0
+            and len(available_gpu_set & reserved_gpus) < 1
+        ):
             client.status = ClientStatus.READY
             client.available_gpus = available_gpus
             reserved_gpus |= set(client.available_gpus)
-            logger.info(f"client: {client.id} is ready, available gpus: {client.available_gpus}")
+            logger.info(
+                f"client: {client.id} is ready, available gpus: {client.available_gpus}"
+            )
 
     for client_id in marked_finished:
         logger.info(f"client {client.id} marked as finished, status: {client.status}")
@@ -313,21 +341,27 @@ def check_finished(status_queue_keep_time):
 
 def regular_check(request_interval, queue_timeout, status_queue_keep_time):
     scheduler = BlockingScheduler(logger=apscheduler_logger)
-    scheduler.add_job(check_gpu_info,
-                      trigger='interval',
-                      seconds=request_interval,
-                      next_run_time=datetime.datetime.now())
-    scheduler.add_job(check_work,
-                      trigger='interval',
-                      seconds=request_interval * 5,
-                      args=(queue_timeout,),
-                      next_run_time=datetime.datetime.now())
+    scheduler.add_job(
+        check_gpu_info,
+        trigger="interval",
+        seconds=request_interval,
+        next_run_time=datetime.datetime.now(),
+    )
+    scheduler.add_job(
+        check_work,
+        trigger="interval",
+        seconds=request_interval * 5,
+        args=(queue_timeout,),
+        next_run_time=datetime.datetime.now(),
+    )
     if status_queue_keep_time != -1:
-        scheduler.add_job(check_finished,
-                        trigger='interval',
-                        hours=status_queue_keep_time,
-                        args=(status_queue_keep_time,),
-                        next_run_time=datetime.datetime.now())
+        scheduler.add_job(
+            check_finished,
+            trigger="interval",
+            hours=status_queue_keep_time,
+            args=(status_queue_keep_time,),
+            next_run_time=datetime.datetime.now(),
+        )
     scheduler.start()
 
 
@@ -339,17 +373,31 @@ def api_server(host, port):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--host", type=str, default="0.0.0.0",
-                        help="host address for api server")
-    parser.add_argument("--port", type=str, default=62333,
-                        help="port for api server")
-    parser.add_argument("--queue_timeout", type=int, default=300,
-                        help="timeout for queue waiting (seconds)")
-    parser.add_argument("--request_interval", type=int, default=1,
-                        help="interval for gpu status requesting (seconds)")
-    parser.add_argument("--status_queue_keep_time", type=int, default=48,
-                        help=("hours for keeping the client status. "
-                              "set `-1` to keep all clients' status"))
+    parser.add_argument(
+        "--host", type=str, default="0.0.0.0", help="host address for api server"
+    )
+    parser.add_argument("--port", type=str, default=62333, help="port for api server")
+    parser.add_argument(
+        "--queue_timeout",
+        type=int,
+        default=300,
+        help="timeout for queue waiting (seconds)",
+    )
+    parser.add_argument(
+        "--request_interval",
+        type=int,
+        default=1,
+        help="interval for gpu status requesting (seconds)",
+    )
+    parser.add_argument(
+        "--status_queue_keep_time",
+        type=int,
+        default=48,
+        help=(
+            "hours for keeping the client status. "
+            "set `-1` to keep all clients' status"
+        ),
+    )
     args = parser.parse_args()
 
     logger.info(f"Running at: {args.host}:{args.port}")
@@ -359,18 +407,17 @@ if __name__ == "__main__":
 
     # daemon threads will end automaticly if the main thread ends
     # thread 1: check gpu and client info regularly
-    check_worker = threading.Thread(name="check",
-                                    target=regular_check,
-                                    args=(args.request_interval,
-                                          args.queue_timeout,
-                                          args.status_queue_keep_time),
-                                    daemon=True)
+    check_worker = threading.Thread(
+        name="check",
+        target=regular_check,
+        args=(args.request_interval, args.queue_timeout, args.status_queue_keep_time),
+        daemon=True,
+    )
 
     # thread 2: main server api backend
-    api_server_worker = threading.Thread(name="api",
-                                         target=api_server,
-                                         args=(args.host, args.port),
-                                         daemon=True)
+    api_server_worker = threading.Thread(
+        name="api", target=api_server, args=(args.host, args.port), daemon=True
+    )
 
     check_worker.start()
     logger.info("check worker started")
