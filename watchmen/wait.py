@@ -29,6 +29,18 @@ def parse_args(in_args=None):
         default="",
         help="authentication token",
     )
+    arg_parser.add_argument(
+        "--host",
+        type=str,
+        default="127.0.0.1",
+        help="host",
+    )
+    arg_parser.add_argument(
+        "--port",
+        type=int,
+        default=62333,
+        help="port",
+    )
     arg_info = arg_parser.parse_args(args=in_args)
     return arg_info
 
@@ -42,8 +54,8 @@ if __name__ == "__main__":
     watch_client = WatchClient(
         id=exp_id,
         gpus=eval(f"[{in_argv.cuda}]"),
-        server_host="localhost",
-        server_port=62333,
+        server_host=in_argv.host,
+        server_port=in_argv.port,
         req_gpu_num=in_argv.req_gpu_num,
         mode=in_argv.wait,
         timeout=60,

@@ -232,7 +232,7 @@ def client_cancel():
         client_id = request.json.get("id")
         if client_id in cc:
             client = cc[client_id]
-            if client.status == ClientStatus.WAITING:
+            if client.status in [ClientStatus.WAITING, ClientStatus.READY]:
                 client.status = ClientStatus.CANCELLED
                 cc.mark_finished(client_id)
                 status = "ok"

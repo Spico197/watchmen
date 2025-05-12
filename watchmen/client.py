@@ -14,6 +14,18 @@ from watchmen.listener import check_gpus_existence, check_req_gpu_num
 
 
 logger = logging.getLogger("common")
+logger.setLevel(logging.INFO)  # Change to INFO to see info messages
+
+# Add a handler if none exists
+if not logger.handlers:
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(logging.INFO)
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+
 TOKEN_FILE = ".watchmen_client.token"
 
 
@@ -155,7 +167,8 @@ class WatchClient(object):
             json=data,
             headers=self._get_headers(),
             timeout=self.timeout,
-        ).json()
+        )
+        result = result.json()
         if result["status"] != "ok":
             raise RuntimeError(f"err registering: {result['msg']}")
 
