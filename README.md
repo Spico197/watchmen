@@ -129,6 +129,7 @@ send_email(
 To get more reminders, please check `watchmen/reminder.py`.
 
 ## UPDATE
+- v0.4.0: add token authentication
 - v0.3.9: add `cancel` api and button in the working queue, fix json encoding bug with higher versions of flask
 - v0.3.8: change `OK` status to be shown only in the finished queue, and show `ready` in the working queue. Fix severe bug when scheduling
 - v0.3.7: much faster due to lock free changes! fix timeout and schedule bug

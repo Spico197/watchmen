@@ -21,6 +21,8 @@ def main():
                         help="gpu waiting mode")
     parser.add_argument("--req_gpu_num", type=int, default=1,
                         help="number of GPUs to request")
+    parser.add_argument("--token", type=str, default="",
+                        help="authentication token")
     args = parser.parse_args()
 
     """WATCHMEN"""
@@ -32,7 +34,8 @@ def main():
         client = WatchClient(id=f"mnist single card {args.id} cuda={args.cuda}",
                              gpus=eval(f"[{args.cuda}]"),
                              req_gpu_num=args.req_gpu_num, mode=waiting_mode,
-                             server_host="127.0.0.1", server_port=62333)
+                             server_host="127.0.0.1", server_port=62333,
+                             token=args.token)
         # client.register()
         available_gpus = []
         available_gpus = client.wait()

@@ -131,4 +131,6 @@ dmypy.json
 # self-defined
 .vscode/
 data/
-watchmen_server.pid
+.watchmen_server.pid
+.watchmen_server.token
+.watchmen_client.token

@@ -6,9 +6,10 @@ import readline  # noqa: F401
 import datetime
 import argparse
 import threading
+import secrets
+from functools import wraps
 
-from flask import Flask, jsonify, request, render_template
-from flask.helpers import make_response
+from flask import Flask, jsonify, request, render_template, make_response, session
 from flask.json.provider import DefaultJSONProvider
 from apscheduler.schedulers.blocking import BlockingScheduler
 
@@ -33,6 +34,7 @@ stream_handler.setFormatter(formatter)
 logger.addHandler(stream_handler)
 
 app = Flask("watchmen.server")
+app.secret_key = os.environ.get("WATCHMEN_SECRET_KEY", secrets.token_hex(32))
 gpu_queue = queue.Queue()
 gpu_info = GPUInfo()
 gpu_queue.put(1)
@@ -41,6 +43,9 @@ cc = ClientCollection()
 client_queue.put(1)
 
 APP_PORT = None
+AUTH_TOKEN = None
+PID_FILE = ".watchmen_server.pid"
+TOKEN_FILE = ".watchmen_server.token"
 
 
 class CustomJSONProvider(DefaultJSONProvider):
@@ -59,7 +64,67 @@ class CustomJSONProvider(DefaultJSONProvider):
 app.json_provider_class = CustomJSONProvider
 
 
+def load_token_from_file():
+    """Load authentication token from file if it exists."""
+    if os.path.exists(TOKEN_FILE):
+        with open(TOKEN_FILE, "r") as f:
+            return f.read().strip()
+    return None
+
+
+def save_token_to_file(token):
+    """Save authentication token to file."""
+    with open(TOKEN_FILE, "w") as f:
+        f.write(token)
+
+
+def generate_token():
+    """Generate a random token."""
+    return secrets.token_hex(16)  # 32 character hex string
+
+
+def login_required(f):
+    """Decorator to require authentication for a route."""
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not AUTH_TOKEN:
+            return f(*args, **kwargs)  # No authentication required
+
+        # Check session
+        if session.get("authenticated"):
+            return f(*args, **kwargs)
+
+        # Check token in headers or query parameters
+        token = request.headers.get("X-Auth-Token") or request.args.get("token")
+        if token and token == AUTH_TOKEN:
+            session["authenticated"] = True
+            return f(*args, **kwargs)
+
+        return jsonify({"status": "err", "msg": "Authentication required"}), 401
+
+    return decorated_function
+
+
+@app.route("/auth", methods=["POST"])
+def authenticate():
+    """Authenticate with token."""
+    if not AUTH_TOKEN:
+        return jsonify({"status": "ok", "msg": "No authentication required"})
+
+    data = request.get_json()
+    if not data or "token" not in data:
+        return jsonify({"status": "err", "msg": "Token required"}), 400
+
+    if data["token"] == AUTH_TOKEN:
+        session["authenticated"] = True
+        return jsonify({"status": "ok", "msg": "Authentication successful"})
+    else:
+        return jsonify({"status": "err", "msg": "Invalid token"}), 401
+
+
 @app.route("/gpu/<int:gpu_id>")
+@login_required
 def get_single_gpu_status(gpu_id: int):
     status = ""
     msg = ""
@@ -73,6 +138,7 @@ def get_single_gpu_status(gpu_id: int):
 
 
 @app.route("/gpus/<gpu_ids>")
+@login_required
 def get_gpus_status(gpu_ids: str):
     status = "err"
     msg = ""
@@ -93,6 +159,7 @@ def get_gpus_status(gpu_ids: str):
 
 
 @app.route("/client/ping", methods=["POST"])
+@login_required
 def client_ping():
     client_info = ClientModel(**request.json)
     status = ""
@@ -117,6 +184,7 @@ def client_ping():
 
 
 @app.route("/client/register", methods=["POST"])
+@login_required
 def client_register():
     client_info = ClientModel(**request.json)
     status = ""
@@ -156,6 +224,7 @@ def client_register():
 
 
 @app.route("/client/cancel", methods=["POST"])
+@login_required
 def client_cancel():
     status = ""
     msg = ""
@@ -181,6 +250,7 @@ def client_cancel():
 
 
 @app.route("/show/work", methods=["GET"])
+@login_required
 def show_work():
     status = ""
     msg = ""
@@ -194,6 +264,7 @@ def show_work():
 
 
 @app.route("/show/finished", methods=["GET"])
+@login_required
 def show_finished():
     status = ""
     msg = ""
@@ -207,6 +278,7 @@ def show_finished():
 
 
 @app.route("/show/gpus", methods=["GET"])
+@login_required
 def show_gpus():
     status = ""
     msg = ""
@@ -221,6 +293,7 @@ def show_gpus():
 
 
 @app.route("/api", methods=["GET", "OPTIONS"])
+@login_required
 def api():
     if request.method == "OPTIONS":
         response = make_response()
@@ -241,10 +314,18 @@ def api():
 @app.route("/", methods=["GET"])
 def index():
     global APP_PORT
-    return render_template("index.html", port=APP_PORT)
+    is_authenticated = session.get("authenticated", False) or not AUTH_TOKEN
+    auth_required = AUTH_TOKEN is not None
+    return render_template(
+        "index.html",
+        port=APP_PORT,
+        is_authenticated=is_authenticated,
+        auth_required=auth_required,
+    )
 
 
 @app.route("/old", methods=["GET"])
+@login_required
 def old_index():
     gpu_info = show_gpus()
     gpu_msg = gpu_info.json["msg"]
@@ -398,11 +479,37 @@ if __name__ == "__main__":
             "set `-1` to keep all clients' status"
         ),
     )
+    parser.add_argument(
+        "--token",
+        type=str,
+        default="",
+        help="Authentication token for accessing the web interface. If empty, a token will be generated. Set to 'none' to disable authentication.",
+    )
     args = parser.parse_args()
 
+    # Handle token authentication
+    if args.token.lower() == "none":
+        AUTH_TOKEN = None
+        if os.path.exists(TOKEN_FILE):
+            os.remove(TOKEN_FILE)  # Remove token file if auth is disabled
+        logger.info("Authentication disabled")
+    else:
+        # Check for token from command line, file, or generate a new one
+        if args.token:
+            AUTH_TOKEN = args.token
+            save_token_to_file(AUTH_TOKEN)
+        else:
+            AUTH_TOKEN = load_token_from_file()
+            if not AUTH_TOKEN:
+                AUTH_TOKEN = generate_token()
+                save_token_to_file(AUTH_TOKEN)
+
+        logger.info(f"Authentication enabled with token: {AUTH_TOKEN}")
+        logger.info(f"Token saved to {os.path.abspath(TOKEN_FILE)}")
+
     logger.info(f"Running at: {args.host}:{args.port}")
-    logger.info(f"Current pid: {os.getpid()} > watchmen_server.pid")
-    with open("watchmen_server.pid", "wt", encoding="utf-8") as fout:
+    logger.info(f"Current pid: {os.getpid()} > {PID_FILE}")
+    with open(PID_FILE, "wt", encoding="utf-8") as fout:
         fout.write(f"{os.getpid()}")
 
     # daemon threads will end automaticly if the main thread ends

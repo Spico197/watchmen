@@ -199,6 +199,8 @@
     var port = {{ port }}
     var responseJsonData = null
     var selected = "homepage-template"
+    var isAuthenticated = {{ is_authenticated|tojson }}
+    var authRequired = {{ auth_required|tojson }}
 
     // const result = document.getElementById("result")
     const connection = document.getElementById("connection")
@@ -213,8 +215,47 @@
     window.addEventListener('DOMContentLoaded', async () => {
       mainBody.style.marginTop = `${navbar.offsetHeight}px`
       updateTemplate()
-      await getInfoAndUpdate()
+      
+      // Check authentication status
+      if (authRequired && !isAuthenticated) {
+        promptForToken()
+      } else {
+        await getInfoAndUpdate()
+      }
     })
+    
+    function promptForToken() {
+      const token = prompt("Please enter your authentication token:", "")
+      if (token) {
+        authenticateWithToken(token)
+      }
+    }
+    
+    async function authenticateWithToken(token) {
+      try {
+        const response = await fetch(`http://${window.location.hostname}:${port}/auth`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ token: token }),
+          credentials: 'same-origin'
+        })
+        
+        const data = await response.json()
+        if (data.status === "ok") {
+          isAuthenticated = true
+          await getInfoAndUpdate()
+        } else {
+          alert("Invalid token. Please try again.")
+          promptForToken()
+        }
+      } catch (error) {
+        console.error('Authentication error:', error)
+        alert(`Authentication error: ${error.message}`)
+        promptForToken()
+      }
+    }
 
     function updateTemplate(useCacheData = true) {
       const template = document.getElementById(selected);
@@ -293,9 +334,17 @@
     }
 
     async function getInfoAndUpdate() {
-      await timeout(30000, fetch(`http://${window.location.hostname}:${port}/api`))
+      await timeout(30000, fetch(`http://${window.location.hostname}:${port}/api`, {
+        credentials: 'same-origin'
+      }))
         .then(async (response) => {
           if (!response.ok) {
+            if (response.status === 401) {
+              // Authentication required
+              isAuthenticated = false
+              promptForToken()
+              return
+            }
             connection.classList.remove("green")
             connection.classList.add("red")
             connection.innerText = "■ ERROR"
@@ -356,7 +405,15 @@
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({ id: clientId }),
+          credentials: 'same-origin'
         })
+
+        if (response.status === 401) {
+          // Authentication required
+          isAuthenticated = false
+          promptForToken()
+          return
+        }
 
         const data = await response.json()
         if (data.status === "ok") {
